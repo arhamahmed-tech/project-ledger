@@ -107,14 +107,25 @@ Required for auth, payments, PII, admin, uploads, webhooks, secrets, risky deps.
 - Record review evidence as `EVD-*` (kind `review`) for ledger-tracked work  
 - Check AuthZ, injection, secrets, validation, least privilege, fail-closed defaults  
 
-## Codebase style (host project)
+## Codebase style (host project) — mandatory
 
-Match **this** repository’s existing patterns:
+When `rules.follow_existing_codebase_style: true` (default), agents **must** follow:
+
+| Doc | Purpose |
+|-----|---------|
+| `docs/conventions/code-style.md` | Naming, formatting, patterns |
+| `docs/conventions/structure.md` | Folder layout, where new code goes |
+| `.project/conventions.yaml` | Machine-readable naming (e.g. `variables: camelCase`) |
+
+`preflight` prints the active naming rules before coding.
 
 1. Read adjacent files of the same kind  
 2. Reuse naming, folders, validation, logging, tests, imports  
-3. Do not introduce new frameworks/libs/folder conventions unless asked or an ADR requires it  
-4. Smallest diff; no drive-by refactors  
+3. Default naming: **camelCase** vars/functions, **PascalCase** classes, **UPPER_SNAKE_CASE** constants, **kebab-case** files — override in `conventions.yaml` or match the repo if it already differs  
+4. Do not introduce new frameworks/libs/folder conventions unless asked or an ADR requires it  
+5. Smallest diff; no drive-by refactors  
+
+Ledger does not run ESLint/Prettier — enforcement is **agent rules + preflight reminder + your CI linters** on the host repo.
 
 ## Harness adapters (installed by `project-ledger init`)
 

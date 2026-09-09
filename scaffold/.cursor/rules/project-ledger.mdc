@@ -8,7 +8,7 @@ alwaysApply: true
 **This rule must apply every chat.** If you do not see it in Cursor Settings → Rules as “Always Apply”, reload the window.
 
 1. **New chat:** `node scripts/ledger.mjs context` first — read only those paths.
-2. **Before coding:** `node scripts/ledger.mjs preflight` — must pass. Out of scope / missing deps → ask user.
+2. **Before coding:** `node scripts/ledger.mjs preflight` — must pass (SPEC, deps, **code style**). Out of scope / missing deps → ask user.
 3. **Handoff / next:** `ledger handoff` for new chats; `ledger next --focus` for the next ready task.
 4. **Finish:** `ledger done TASK-####` then `ledger review` before PR.
 5. **User originals:** `docs/product/sources/` — never rewrite; `ledger sources`

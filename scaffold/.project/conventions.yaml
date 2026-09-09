@@ -1,0 +1,25 @@
+# Host-project code conventions — customize for this repo.
+# Agents must read docs/conventions/* and follow naming here before editing application code.
+
+enforce_code_style: true
+code_style_doc: docs/conventions/code-style.md
+structure_doc: docs/conventions/structure.md
+
+naming:
+  variables: camelCase
+  functions: camelCase
+  methods: camelCase
+  classes: PascalCase
+  interfaces: PascalCase
+  types: PascalCase
+  enums: PascalCase
+  constants: UPPER_SNAKE_CASE
+  files: kebab-case
+  directories: kebab-case
+  test_files: "*.test.js or *.spec.ts — match host repo"
+
+structure:
+  application_code: src/          # or lib/, app/ — match what already exists in this repo
+  tests: test/ or co-located      # match host repo
+  product_docs: docs/product/     # formal SOW/REQ/SPEC via ledger only
+  engineering_history: .engineering/

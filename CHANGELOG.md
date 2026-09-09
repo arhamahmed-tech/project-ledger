@@ -2,6 +2,25 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.10.2 — 2026-09-09
+
+### Agent onboarding
+- `ledger onboard` — single command for SDLC phase (`sources_only`, `specification`, `planning`, `implementation`, `active`) plus Done / Not started narrative (what agents inferred from `status`+`board`+`sources` in 0.10.0)
+- Empty `context` and `adopt` completion point to `onboard`
+
+### Code style enforcement (agent-facing)
+- `docs/conventions/code-style.md` + `structure.md` — explicit naming (camelCase, PascalCase, kebab-case files, etc.)
+- `.project/conventions.yaml` — machine-readable naming; customize per host repo
+- `preflight` prints **CODE STYLE (mandatory)** block when `follow_existing_codebase_style: true`
+- `validate` / `doctor` require conventions files; Cursor/Claude rules + AGENTS.md updated
+
+## 0.10.1 — 2026-09-09
+
+### Existing / mid-build projects
+- `ledger adopt [--name]` — onboard a repo that already has code: init/upgrade without clobbering, seed `docs/product/sources/` from README/docs, write `ADOPTION-CHECKLIST.md`, bootstrap epic, run inventory
+- `ledger inventory` — list top-level dirs not covered by any TASK/CHG `files:`
+- `init` when already present points to `adopt` / `upgrade` / `inventory`
+
 ## 0.10.0 — 2026-09-09
 
 ### Agent UX

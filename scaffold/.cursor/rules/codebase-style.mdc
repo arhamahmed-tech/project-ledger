@@ -5,7 +5,11 @@ alwaysApply: false
 
 # Codebase style
 
-See `docs/agent-protocol.md` § Codebase style.
+**Mandatory** when editing application code (`rules.follow_existing_codebase_style`).
 
-Read adjacent files first. Match naming, folders, validation, tests, imports.
-Do not introduce new frameworks or conventions unless asked or an ADR requires it.
+1. Read `docs/conventions/code-style.md` and `.project/conventions.yaml` (naming: camelCase variables/functions, PascalCase classes, UPPER_SNAKE_CASE constants, kebab-case files — or match this repo if different).
+2. Read `docs/conventions/structure.md` for folder layout.
+3. Read adjacent files first; match their patterns.
+4. Do not introduce new frameworks, naming styles, or folder layouts unless asked or an ADR requires it.
+
+Preflight prints active naming rules — run `node scripts/ledger.mjs preflight` before coding.

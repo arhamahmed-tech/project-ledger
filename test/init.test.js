@@ -34,6 +34,8 @@ test("init scaffolds, vendors CLI, validate + doctor pass", () => {
   assert.ok(fs.existsSync(path.join(dir, ".claude/skills/find-skills/SKILL.md")), "find-skills Claude");
   assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/sow/README.md")), "product sources");
   assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/specs/README.md")));
+  assert.ok(fs.existsSync(path.join(dir, ".project/conventions.yaml")), "conventions.yaml");
+  assert.ok(fs.existsSync(path.join(dir, "docs/conventions/code-style.md")), "code-style doc");
 
   const local = spawnSync(process.execPath, [path.join(dir, "scripts/ledger.mjs"), "validate"], {
     cwd: dir,
@@ -276,6 +278,8 @@ test("preflight fails without SPEC pin; passes with scope", () => {
   let pf = runLocal(["preflight", "TASK-0001"]);
   assert.equal(pf.status, 0, pf.stderr || pf.stdout);
   assert.match(pf.stdout, /PREFLIGHT OK|OUT OF SCOPE|IN SCOPE/);
+  assert.match(pf.stdout, /CODE STYLE \(mandatory before editing/);
+  assert.match(pf.stdout, /camelCase/);
 
   assert.equal(runLocal(["new", "task", "First", "--plan", "PLAN-0001"]).status, 0);
   const t2 = path.join(dir, "docs/plans/tasks/TASK-0002.md");
@@ -337,4 +341,49 @@ test("next handoff board note done review", () => {
   const rev = runLocal(["review"]);
   // review may fail check if untracked code — should still run validate
   assert.match(rev.stdout + rev.stderr, /REVIEW/);
+});
+
+test("onboard detects sources-only phase after init", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "basket"], dir).status, 0);
+  const sowDir = path.join(dir, "docs/product/sources/sow");
+  fs.mkdirSync(sowDir, { recursive: true });
+  fs.writeFileSync(path.join(sowDir, "Smart Basket App - SOW.md"), "# SOW\n");
+
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const onboard = spawnSync(process.execPath, [bin, "onboard"], { cwd: dir, encoding: "utf8" });
+  assert.equal(onboard.status, 0, onboard.stderr || onboard.stdout);
+  assert.match(onboard.stdout, /phase: sources_only/);
+  assert.match(onboard.stdout, /very start/);
+  assert.match(onboard.stdout, /Smart Basket App - SOW\.md/);
+  assert.match(onboard.stdout, /new sow/);
+  assert.match(onboard.stdout, /0 epics \/ 0 milestones \/ 0 plans \/ 0 tasks/);
+});
+
+test("adopt seeds sources and inventory for mid-build repo", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  fs.writeFileSync(path.join(dir, "README.md"), "# Existing App\n\nProduct notes.\n");
+  fs.mkdirSync(path.join(dir, "docs"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "docs/prd.md"), "# PRD\nCheckout flow\n");
+  fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+  fs.writeFileSync(path.join(dir, "src/app.js"), "console.log(1)\n");
+
+  const ad = spawnSync(process.execPath, [BIN, "adopt", "--name", "existing"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, LEDGER_PKG_ROOT: PKG },
+  });
+  assert.equal(ad.status, 0, ad.stderr || ad.stdout);
+  assert.ok(fs.existsSync(path.join(dir, ".project/project.yaml")));
+  assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/briefs/imported-README.md")));
+  assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/specs/imported-prd.md")));
+  assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/briefs/ADOPTION-CHECKLIST.md")));
+  assert.match(ad.stdout, /INVENTORY|untraced|ADOPT/i);
+
+  const inv = spawnSync(process.execPath, [path.join(dir, "scripts/ledger.mjs"), "inventory"], {
+    cwd: dir,
+    encoding: "utf8",
+  });
+  assert.equal(inv.status, 0, inv.stderr || inv.stdout);
+  assert.match(inv.stdout, /src\//);
 });

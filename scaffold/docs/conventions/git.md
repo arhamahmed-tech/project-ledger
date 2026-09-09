@@ -6,4 +6,4 @@
 4. Trace files in TASK/CHG `files:` lists.
 5. Evidence before claiming done.
 6. Security/code review for sensitive changes.
-7. Match existing codebase style.
+7. Match codebase style — `docs/conventions/code-style.md` + `.project/conventions.yaml`.

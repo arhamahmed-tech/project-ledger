@@ -73,6 +73,36 @@ export function loadRules() {
   return rules;
 }
 
+/** Host-project naming/layout — see docs/conventions/ and .project/conventions.yaml */
+export function loadConventions() {
+  if (!exists(".project/conventions.yaml")) return null;
+  const text = read(".project/conventions.yaml");
+  const scalar = (key) =>
+    text.match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1]?.trim()?.replace(/^["']|["']$/g, "");
+  const naming = {};
+  let inNaming = false;
+  for (const line of text.split("\n")) {
+    if (/^naming:\s*$/.test(line)) {
+      inNaming = true;
+      continue;
+    }
+    if (inNaming) {
+      const m = line.match(/^\s{2}([a-z_]+):\s*(.+)$/);
+      if (m) {
+        naming[m[1]] = m[2].trim().replace(/^["']|["']$/g, "");
+        continue;
+      }
+      if (/^\S/.test(line)) inNaming = false;
+    }
+  }
+  return {
+    enforce: scalar("enforce_code_style") !== "false",
+    codeStyleDoc: scalar("code_style_doc") || "docs/conventions/code-style.md",
+    structureDoc: scalar("structure_doc") || "docs/conventions/structure.md",
+    naming,
+  };
+}
+
 export function loadContext() {
   const empty = {
     current_epic: null,

@@ -252,3 +252,100 @@ export function computeDrift(g = graph()) {
 
   return { issues, tracedFeatures, totalPlans: g.plans.length };
 }
+
+export function listProductSources() {
+  const out = [];
+  for (const sub of ["sow", "specs", "briefs", "misc"]) {
+    for (const f of listFiles(`docs/product/sources/${sub}`, (n) => n !== "README.md")) {
+      out.push({ category: sub, path: f });
+    }
+  }
+  return out;
+}
+
+/** Where the repo is in the SDLC — what agents inferred from status+board+sources in 0.10.0. */
+export function computeOnboard(g = graph()) {
+  const c = counts(g);
+  const sources = listProductSources();
+  const ctx = g.context;
+  const hasFocus = !!(
+    ctx.current_task ||
+    ctx.current_epic ||
+    ctx.current_plan ||
+    ctx.current_spec ||
+    ctx.current_req
+  );
+  const inProgress = g.tasks.filter((t) => t.meta.status === "in_progress").length;
+  const formalSow = c.sow_revisions > 0;
+  const formalSpec = c.specifications > 0;
+  const adopted = listFiles("docs/product/sources/briefs", (n) => n === "ADOPTION-CHECKLIST.md").length > 0;
+  const boardEmpty = !c.epics && !c.plans && !c.tasks && !c.milestones;
+
+  let phase;
+  let headline;
+  let nextSteps;
+
+  if (hasFocus || inProgress > 0) {
+    phase = "active";
+    headline = "Work in progress — focus set or a task is in flight.";
+    nextSteps = [
+      "node scripts/ledger.mjs preflight",
+      "node scripts/ledger.mjs next",
+      'node scripts/ledger.mjs note "…"',
+    ];
+  } else if (c.tasks > 0) {
+    phase = "implementation";
+    headline = "Implementation phase — tasks exist; pick the next ready one.";
+    nextSteps = [
+      "node scripts/ledger.mjs next --focus",
+      "node scripts/ledger.mjs board",
+      "node scripts/ledger.mjs preflight",
+    ];
+  } else if (formalSpec && (c.plans > 0 || c.epics > 0)) {
+    phase = "planning";
+    headline = "Planning phase — formal product exists; break down into tasks.";
+    nextSteps = [
+      'node scripts/ledger.mjs new task "…" --plan PLAN-0001 --focus',
+      "node scripts/ledger.mjs board",
+    ];
+  } else if (formalSow || c.requirements > 0 || formalSpec) {
+    phase = "specification";
+    headline = "Specification phase — derive specs and plans from SOW/REQ.";
+    nextSteps = [
+      "node scripts/ledger.mjs new spec --req REQ-0001",
+      'node scripts/ledger.mjs new epic "…"',
+      'node scripts/ledger.mjs new plan "…" --epic EPIC-0001 --spec SPEC-0001@1',
+    ];
+  } else if (sources.length > 0) {
+    phase = "sources_only";
+    headline = adopted
+      ? "Mid-build adopt — originals imported; formalize before coding."
+      : "You're at the very start — tooling is up, product work hasn't been ledgered yet.";
+    nextSteps = [
+      "Formalize SOW from sources: node scripts/ledger.mjs new sow (or revise)",
+      "node scripts/ledger.mjs new req \"…\" then new spec --req …",
+      "node scripts/ledger.mjs new ms/epic/plan/task",
+      "Then implementation with runs + evidence",
+    ];
+  } else {
+    phase = "bootstrapped";
+    headline = "Bootstrapped — ledger scaffold is ready; no product sources yet.";
+    nextSteps = [
+      "Drop user originals in docs/product/sources/{sow,specs,briefs,misc}/",
+      "node scripts/ledger.mjs sources",
+      'node scripts/ledger.mjs new sow / new req / new spec',
+    ];
+  }
+
+  return {
+    phase,
+    headline,
+    nextSteps,
+    sources,
+    boardEmpty,
+    hasFocus,
+    adopted,
+    inProgress,
+    counts: c,
+  };
+}

@@ -51,5 +51,5 @@ conventions:
   releases: .engineering/releases
   templates: .project/templates
   security: agents must run security/code review on sensitive changes
-  style: agents must match the host project's existing codebase conventions
+  style: agents must follow docs/conventions/code-style.md and .project/conventions.yaml (naming e.g. camelCase; match adjacent files)
   preflight: run ledger preflight before coding; ledger done enforces runs/evidence/tests rules

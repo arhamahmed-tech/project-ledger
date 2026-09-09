@@ -13,6 +13,8 @@ import {
   parseFrontmatter,
   yamlScalar,
   loadContext,
+  loadConventions,
+  loadRules,
   saveContext,
   events,
   nextId,
@@ -24,14 +26,24 @@ import {
   appendAuditEvent,
   hashEvent,
 } from "./lib/parse.mjs";
-import { graph, counts, fileMatches, findFileHits, resolveChain, computeDrift } from "./lib/model.mjs";
+import {
+  graph,
+  counts,
+  fileMatches,
+  findFileHits,
+  resolveChain,
+  computeDrift,
+  computeOnboard,
+} from "./lib/model.mjs";
 
 function usage() {
   console.log(`Project Ledger
 
   project-ledger init [--name my-app] [--force]
+  project-ledger adopt [--name my-app]   mid-build / existing repo onboarding
   project-ledger upgrade
-  project-ledger doctor | status | validate | check | sources | board
+  project-ledger inventory               code paths not covered by TASK files
+  project-ledger doctor | status | onboard | validate | check | sources | board
   project-ledger context | preflight [TASK] | next [--focus] | handoff
   project-ledger focus <id> | focus --clear
   project-ledger note <text>          append note to focused task
@@ -42,8 +54,10 @@ function usage() {
   project-ledger revise <SPEC-|SOW- id>
   project-ledger hooks install | trace <note> | history | why | who | drift | impact | timeline | decisions | event | hash | ui
 
-New chat:  node scripts/ledger.mjs context && node scripts/ledger.mjs preflight
-Handoff:   node scripts/ledger.mjs handoff
+Existing/mid-build repo:
+  node /path/to/project-ledger/bin/project-ledger.js adopt --name my-app
+New chat:  node scripts/ledger.mjs context && node scripts/ledger.mjs onboard
+Before code: node scripts/ledger.mjs preflight
 `);
 }
 
@@ -283,6 +297,8 @@ function cmdDoctor() {
   ok("Claude adapter", exists("CLAUDE.md"));
   ok("security-review", exists(".cursor/rules/security-review.mdc") || exists(".claude/rules/security-review.md"));
   ok("codebase-style", exists(".cursor/rules/codebase-style.mdc") || exists(".claude/rules/codebase-style.md"));
+  ok("conventions.yaml", exists(".project/conventions.yaml"), "Run: project-ledger upgrade");
+  ok("code-style doc", exists("docs/conventions/code-style.md"), "Run: project-ledger upgrade");
   ok(`scaffold at PKG_ROOT`, fs.existsSync(path.join(PKG_ROOT, "scaffold")), "npm i -D /path/to/project-ledger or LEDGER_PKG_ROOT");
   ok("docs/plans/epics", exists("docs/plans/epics"), "Run: project-ledger init --force");
   ok("docs/product/sources", exists("docs/product/sources/README.md"), "Run: project-ledger upgrade — user originals folder");
@@ -358,8 +374,10 @@ function cmdInit(args) {
     vendorCli();
     console.log("Already initialized (.project/project.yaml present).");
     console.log("Refreshed scripts/ledger.mjs when package CLI is available.");
-    console.log("Use: project-ledger init --force   to fill missing scaffold files");
-    console.log("Or:  node scripts/ledger.mjs validate");
+    console.log("Mid-build / catch up:  project-ledger upgrade");
+    console.log("                or:  project-ledger adopt --name " + name);
+    console.log("Fill missing only:   project-ledger init --force");
+    console.log("Inventory code:      project-ledger inventory");
     return;
   }
 
@@ -508,6 +526,56 @@ function cmdStatus() {
   console.log(`✓  ${drift.tracedFeatures} Plans fully traced`);
 }
 
+function cmdOnboard() {
+  const g = graph();
+  const o = computeOnboard(g);
+  const c = o.counts;
+  console.log(`PROJECT ONBOARD — ${g.project.name} (${g.project.id}) v${g.project.version}`);
+  console.log(`phase: ${o.phase}\n`);
+  console.log(o.headline);
+  console.log("");
+  console.log("Done");
+  console.log(`- Project ledger bootstrapped (\`${g.project.id}\`, v${g.project.version})`);
+  if (o.adopted) console.log("- Mid-build adopt checklist present (see ADOPTION-CHECKLIST.md)");
+  if (o.sources.length) {
+    const n = o.sources.length;
+    console.log(`- ${n} product original${n === 1 ? "" : "s"}:`);
+    for (const s of o.sources) console.log(`  - \`${s.path}\``);
+  } else {
+    console.log("- No product originals in docs/product/sources/ yet");
+  }
+  if (o.hasFocus) {
+    const ctx = g.context;
+    console.log(
+      `- Focus: epic=${ctx.current_epic || "—"} plan=${ctx.current_plan || "—"} task=${ctx.current_task || "—"}`,
+    );
+  } else {
+    console.log(
+      `- No focus set; board ${o.boardEmpty ? "is empty" : "has entities"} (${c.epics} epics / ${c.milestones} milestones / ${c.plans} plans / ${c.tasks} tasks)`,
+    );
+  }
+  if (c.sow_revisions || c.specifications || c.requirements) {
+    console.log(
+      `- Formal product: ${c.sow_revisions ? c.sow_revisions + " SOW rev" : "no SOW"} · ${c.requirements} REQ · ${c.specifications} SPEC`,
+    );
+  }
+  console.log("");
+  console.log("Not started (next path)");
+  o.nextSteps.forEach((step, i) => console.log(`${i + 1}. ${step}`));
+  console.log("");
+  if (loadRules().follow_existing_codebase_style !== false) {
+    console.log("Code style: read docs/conventions/code-style.md — naming per .project/conventions.yaml (e.g. camelCase variables).");
+  }
+  if (o.phase === "sources_only") {
+    console.log("Suggested now: node scripts/ledger.mjs new sow   (derive from source — do not rewrite originals)");
+    console.log("Or:             node scripts/ledger.mjs sources");
+  } else if (o.phase === "active" || o.phase === "implementation") {
+    console.log("Suggested now: node scripts/ledger.mjs next --focus");
+  } else if (o.phase === "bootstrapped") {
+    console.log("Suggested now: drop originals into docs/product/sources/ then node scripts/ledger.mjs sources");
+  }
+}
+
 function cmdValidate() {
   const errors = [];
   const required = [
@@ -541,6 +609,9 @@ function cmdValidate() {
     ".cursor/rules/project-ledger.mdc",
     "AGENTS.md",
     "docs/agent-protocol.md",
+    ".project/conventions.yaml",
+    "docs/conventions/code-style.md",
+    "docs/conventions/structure.md",
   ];
   for (const p of required) if (!exists(p)) errors.push(`missing: ${p}`);
 
@@ -662,6 +733,7 @@ function cmdContext() {
   if (!ctx.current_task && !ctx.current_plan && !ctx.current_epic && !ctx.current_spec && !ctx.current_req) {
     console.log("  (empty) — set with: ledger focus <TASK-|PLAN-|EPIC-|SPEC-|REQ- id>");
     console.log("  or:        ledger new task \"...\" --plan PLAN-0001 --focus");
+    console.log("  Phase + next steps: node scripts/ledger.mjs onboard");
     console.log("  Product originals: docs/product/sources/ (sow|specs|briefs|misc) — run: ledger sources");
     return;
   }
@@ -886,6 +958,10 @@ function cmdPreflight(taskIdArg) {
     warns.push("NO_PRODUCT_SOURCES: docs/product/sources/ is empty — confirm formal SPEC/SOW still match user intent");
   }
 
+  if (rules.follow_existing_codebase_style !== false) {
+    printStyleConventions({ hard: false, warns });
+  }
+
   console.log("CHECKS");
   for (const c of checks) console.log(`  · ${c}`);
   console.log("");
@@ -898,6 +974,32 @@ function cmdPreflight(taskIdArg) {
   }
   console.log("\nPREFLIGHT OK — safe to implement within SPEC scope only.");
   console.log("If the prompt conflicts with Out of scope or missing deps → ask the user, do not invent scope.");
+  console.log("Match code style: read docs/conventions/code-style.md and adjacent files (camelCase etc. per .project/conventions.yaml).");
+}
+
+function printStyleConventions({ hard = false, warns = null, errors = null } = {}) {
+  const rules = loadRules();
+  if (rules.follow_existing_codebase_style === false) return;
+  const conv = loadConventions();
+  const styleDoc = conv?.codeStyleDoc || "docs/conventions/code-style.md";
+  const structDoc = conv?.structureDoc || "docs/conventions/structure.md";
+  console.log("CODE STYLE (mandatory before editing application code)\n");
+  if (!exists(styleDoc)) {
+    const msg = `STYLE_DOC_MISSING: ${styleDoc} — add conventions or run project-ledger upgrade`;
+    if (hard && errors) errors.push(msg);
+    else if (warns) warns.push(msg);
+    console.log(`  ⚠ ${msg}\n`);
+    return;
+  }
+  console.log(`  Read: ${styleDoc}`);
+  if (exists(structDoc)) console.log(`  Read: ${structDoc}`);
+  if (conv?.naming && Object.keys(conv.naming).length) {
+    console.log("  Naming:");
+    for (const [k, v] of Object.entries(conv.naming)) console.log(`    ${k}: ${v}`);
+  } else {
+    console.log("  Naming: variables/functions camelCase · classes PascalCase · constants UPPER_SNAKE_CASE · files kebab-case");
+  }
+  console.log("  Rule: match adjacent files — do not introduce a second style or new folder layout without ADR.\n");
 }
 
 function cmdFocus(args) {
@@ -1741,6 +1843,9 @@ function cmdUpgrade() {
     ".cursor/rules/agent-toolkit.mdc",
     ".cursor/rules/codebase-style.mdc",
     ".cursor/rules/security-review.mdc",
+    ".project/conventions.yaml",
+    "docs/conventions/code-style.md",
+    "docs/conventions/structure.md",
     ".claude/rules/project-ledger.md",
     ".project/harness/validate-on-stop.sh",
     ".project/harness/toolkit-reminder.sh",
@@ -1790,6 +1895,211 @@ function cmdUpgrade() {
   console.log("  - Run: node scripts/ledger.mjs hooks install");
   console.log("  - Keep .github/workflows/project-ledger.yml enabled on PRs");
   console.log("Next: node scripts/ledger.mjs doctor && node scripts/ledger.mjs validate");
+}
+
+/** Mid-build / existing project: scaffold without clobbering, seed sources, inventory. */
+function cmdAdopt(args) {
+  const nameIdx = args.indexOf("--name");
+  const name =
+    (nameIdx >= 0 && args[nameIdx + 1]) ||
+    path.basename(ROOT) ||
+    "my-project";
+
+  console.log(`ADOPT — mid-build / existing project → Project Ledger\n`);
+  console.log(`ROOT  ${ROOT}`);
+  console.log(`name  ${name}\n`);
+
+  // 1) Ensure ledger present (never overwrite existing files)
+  if (!exists(".project/project.yaml")) {
+    console.log("Step 1: init (fill scaffold, skip existing files)…");
+    cmdInit(["--name", name, "--force"]);
+  } else {
+    console.log("Step 1: already initialized — running upgrade…");
+    cmdUpgrade();
+  }
+
+  // 2) Seed sources from existing product docs (copy, never move/overwrite user originals in place)
+  console.log("\nStep 2: seed docs/product/sources/ from existing docs (copy only)…");
+  const seedPairs = [
+    ["README.md", "docs/product/sources/briefs/imported-README.md"],
+    ["CONTRIBUTING.md", "docs/product/sources/briefs/imported-CONTRIBUTING.md"],
+    ["docs/README.md", "docs/product/sources/misc/imported-docs-README.md"],
+  ];
+  // Heuristic: common product doc names anywhere under docs/ (except ledger-owned trees)
+  const skipPrefixes = [
+    "docs/product/sources/",
+    "docs/product/specs/",
+    "docs/product/sow/",
+    "docs/product/requirements/",
+    "docs/plans/",
+    "docs/architecture/adr/",
+    "docs/agent-protocol.md",
+  ];
+  let seeded = 0;
+  for (const [from, to] of seedPairs) {
+    if (exists(from) && !exists(to)) {
+      fs.mkdirSync(path.dirname(abs(to)), { recursive: true });
+      fs.copyFileSync(abs(from), abs(to));
+      console.log(`  + ${from} → ${to}`);
+      seeded++;
+    }
+  }
+  if (exists("docs")) {
+    for (const f of listFiles("docs", (n) => /\.(md|txt|pdf)$/i.test(n))) {
+      if (skipPrefixes.some((p) => f === p || f.startsWith(p))) continue;
+      if (f === "docs/product/vision.md") continue;
+      const base = path.basename(f);
+      const lower = base.toLowerCase();
+      let destDir = "docs/product/sources/misc";
+      if (/sow|statement.of.work|contract|msa/.test(lower)) destDir = "docs/product/sources/sow";
+      else if (/spec|prd|product.?spec|requirements?/.test(lower)) destDir = "docs/product/sources/specs";
+      else if (/brief|discovery|one.?pager|rfc/.test(lower)) destDir = "docs/product/sources/briefs";
+      const dest = `${destDir}/imported-${base}`;
+      if (!exists(dest)) {
+        fs.mkdirSync(path.dirname(abs(dest)), { recursive: true });
+        fs.copyFileSync(abs(f), abs(dest));
+        console.log(`  + ${f} → ${dest}`);
+        seeded++;
+      }
+    }
+  }
+  if (!seeded) console.log("  (no extra docs found to seed — drop originals into docs/product/sources/ manually)");
+
+  // 3) Adoption checklist
+  const checklist = `docs/product/sources/briefs/ADOPTION-CHECKLIST.md`;
+  if (!exists(checklist)) {
+    write(
+      checklist,
+      `# Mid-project adoption checklist
+
+Generated by \`ledger adopt\` for **${name}**.
+
+## Do this once
+
+- [ ] Review files under \`docs/product/sources/\` (imported copies — originals untouched)
+- [ ] Write formal SOW/SPEC from sources: \`ledger new sow\` / \`ledger new spec --req …\`
+- [ ] Create an epic for remaining work: \`ledger new epic "Stabilize ${name}"\`
+- [ ] Break mid-build work into tasks with \`files:\` listing real paths (\`ledger inventory\` helps)
+- [ ] \`ledger hooks install\` + keep CI workflow
+- [ ] \`ledger doctor\` + \`ledger validate\`
+
+## Rules while adopting
+
+1. Do **not** rewrite user originals in \`sources/\`.
+2. New code changes need a TASK with \`files:\` or \`ledger check\` will fail.
+3. Before coding: \`ledger preflight\`. Before PR: \`ledger review\`.
+`,
+    );
+    console.log(`  + ${checklist}`);
+  }
+
+  // 4) Bootstrap epic if none
+  const g = graph();
+  if (!g.epics.length) {
+    console.log("\nStep 3: bootstrap epic for mid-build…");
+    cmdNew("epic", [`Adopt ledger for ${name}`, "--status", "active"]);
+  } else {
+    console.log("\nStep 3: epics already exist — skip bootstrap epic");
+  }
+
+  // 5) Focus + notes
+  const g2 = graph();
+  const epic = g2.epics[0];
+  if (epic) {
+    saveContext({
+      ...loadContext(),
+      current_epic: epic.meta.id,
+      notes: `Mid-build adopt of ${name} — see docs/product/sources/briefs/ADOPTION-CHECKLIST.md`,
+      updated_at: new Date().toISOString(),
+      updated_by: "agent:ledger",
+    });
+  }
+
+  // 6) Inventory
+  console.log("\nStep 4: code inventory (untraced paths)…");
+  cmdInventory();
+
+  console.log("\n=== ADOPT COMPLETE — next ===");
+  console.log("  1. Read docs/product/sources/briefs/ADOPTION-CHECKLIST.md");
+  console.log("  2. node scripts/ledger.mjs onboard");
+  console.log("  3. node scripts/ledger.mjs new sow \"…\" / new spec \"…\" --req …");
+  console.log("  4. Create TASK files with files: [src/…] for areas you still touch");
+  console.log("  5. node scripts/ledger.mjs hooks install");
+  console.log("  6. node scripts/ledger.mjs doctor");
+  appendAuditEvent({
+    actor: { type: "agent", id: "ledger" },
+    action: "project.adopted",
+    target: "PROJECT-001",
+  });
+}
+
+function cmdInventory() {
+  const g = graph();
+  const skip = new Set([
+    ".git",
+    "node_modules",
+    "dist",
+    "build",
+    "coverage",
+    ".next",
+    ".turbo",
+    "vendor",
+    "scripts",
+    "docs",
+    ".project",
+    ".engineering",
+    ".audit",
+    ".agent-trace",
+    ".cursor",
+    ".claude",
+    ".github",
+    "scaffold",
+    "test",
+    "tests",
+    "__tests__",
+  ]);
+  const roots = [];
+  if (fs.existsSync(ROOT)) {
+    for (const ent of fs.readdirSync(ROOT, { withFileTypes: true })) {
+      if (!ent.isDirectory()) continue;
+      if (ent.name.startsWith(".") && ![".project"].includes(ent.name)) {
+        if (skip.has(ent.name)) continue;
+      }
+      if (skip.has(ent.name)) continue;
+      roots.push(ent.name);
+    }
+  }
+
+  const traced = new Set();
+  for (const t of g.tasks) {
+    for (const f of asArr(t.meta.files)) {
+      const top = String(f).replace(/^\.\//, "").split("/")[0];
+      if (top) traced.add(top);
+    }
+  }
+  for (const c of g.changes) {
+    for (const f of asArr(c.meta.files)) {
+      const top = String(f).replace(/^\.\//, "").split("/")[0];
+      if (top) traced.add(top);
+    }
+  }
+
+  console.log("INVENTORY — top-level dirs vs TASK/CHG files:\n");
+  let untraced = 0;
+  for (const d of roots.sort()) {
+    const ok = traced.has(d) || [...traced].some((t) => t === d || d.startsWith(t));
+    // also: any file under d mentioned
+    const hit = g.tasks.some((t) => asArr(t.meta.files).some((f) => String(f).startsWith(d + "/"))) ||
+      g.changes.some((c) => asArr(c.meta.files).some((f) => String(f).startsWith(d + "/")));
+    if (ok || hit) console.log(`  ✓  ${d}/  (traced)`);
+    else {
+      console.log(`  ✗  ${d}/  (no TASK/CHG files: yet — mid-build: add a task covering this)`);
+      untraced++;
+    }
+  }
+  if (!roots.length) console.log("  (no top-level code dirs found)");
+  console.log(`\n${untraced} untraced dir(s). Tip: ledger new task "Cover ${roots[0] || "src"}" --plan PLAN-#### then set files: [${roots[0] || "src"}/]`);
+  return untraced;
 }
 
 function cmdHooksInstall() {
@@ -2593,14 +2903,23 @@ switch (cmd) {
   case "init":
     cmdInit(argv);
     break;
+  case "adopt":
+    cmdAdopt(argv);
+    break;
   case "upgrade":
     cmdUpgrade();
+    break;
+  case "inventory":
+    cmdInventory();
     break;
   case "doctor":
     cmdDoctor();
     break;
   case "status":
     cmdStatus();
+    break;
+  case "onboard":
+    cmdOnboard();
     break;
   case "validate":
     cmdValidate();

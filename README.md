@@ -24,13 +24,34 @@ yarn add -D project-ledger
 
 Requires **Node.js ≥ 18**.
 
-### Initialize a project
+### Initialize a new project
 
 ```bash
 cd /path/to/your-app
 npx project-ledger init --name your-app
 npx project-ledger doctor
 npx project-ledger validate
+```
+
+### Adopt an existing / mid-build project
+
+Already have code (and maybe docs)? Use **adopt** — it fills missing ledger files without overwriting yours, copies existing docs into `docs/product/sources/`, writes an adoption checklist, and inventories untraced code dirs:
+
+```bash
+cd /path/to/existing-app
+npm i -D /path/to/project-ledger   # or published package
+npx project-ledger adopt --name your-app
+npx project-ledger inventory
+npx project-ledger hooks install
+npx project-ledger doctor
+```
+
+Then: formalize SOW/SPEC from `docs/product/sources/`, create tasks with `files:` for areas you still change.
+
+### Upgrade an already-ledgered project
+
+```bash
+npx project-ledger upgrade
 ```
 
 `init` will:
