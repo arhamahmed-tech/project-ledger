@@ -1,6 +1,6 @@
 ---
-description: Skills, MCP, hooks — see docs/agent-protocol.md
-alwaysApply: true
+description: Use when choosing skills, MCP tools, or hook-driven workflows — agent toolkit order
+alwaysApply: false
 ---
 
 # Agent toolkit
@@ -9,4 +9,4 @@ Follow `docs/agent-protocol.md` decision order:
 
 **skill → /find-skills → MCP → hooks → implement**
 
-Works the same in Cursor, Claude Code, and other harnesses via `AGENTS.md`.
+Project skills live in `.cursor/skills/` (includes find-skills). Works with `AGENTS.md` for all harnesses.

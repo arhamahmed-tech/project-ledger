@@ -44,13 +44,15 @@ node scripts/ledger.mjs new task "Wire refund API" --plan PLAN-0001   # auto-foc
 node scripts/ledger.mjs focus --clear
 ```
 
-Hard gates (optional but recommended):
+Hard gates (**required for production use**):
 
 ```bash
 node scripts/ledger.mjs hooks install          # pre-commit: validate + check
-# CI: .github/workflows/project-ledger.yml (installed by init/upgrade)
+# CI: .github/workflows/project-ledger.yml must stay enabled (fails PRs on validate/check)
 LEDGER_STRICT=1                                # stop hooks exit non-zero on validate fail
 ```
+
+Do not claim ledger completion without `validate` OK. Do not merge PRs that fail the ledger workflow.
 
 CLI (any of):
 

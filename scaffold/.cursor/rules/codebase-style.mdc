@@ -1,6 +1,6 @@
 ---
-description: Match the host project's existing codebase style
-alwaysApply: true
+description: Use when editing application code — match this repo's existing style and patterns
+alwaysApply: false
 ---
 
 # Codebase style

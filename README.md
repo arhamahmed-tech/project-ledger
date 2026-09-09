@@ -4,11 +4,11 @@
 [![node](https://img.shields.io/node/v/project-ledger.svg)](https://nodejs.org)
 [![license](https://img.shields.io/npm/l/project-ledger.svg)](./LICENSE)
 
-**Git-native Project Ledger** — drop a durable source of truth into any existing repository.
+**Git-native Project Ledger** — durable SDLC source of truth in any repo, with production gates (CI, pre-commit, audit chain).
 
 Track epics, requirements, SOW/spec revisions, ADRs, plans, tasks, agent runs, and evidence in Git — plus an **active context** file so a new chat can resume work without re-reading every task. Ships a CLI plus agent adapters for **Cursor**, **Claude Code**, **GitHub Copilot**, **Codex**, and anything that reads `AGENTS.md`.
 
-> Not another SDLC SaaS. A thin protocol + tools around your repo.
+> Not another SDLC SaaS. A thin protocol + tools around your repo. See [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 

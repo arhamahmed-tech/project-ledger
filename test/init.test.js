@@ -21,6 +21,10 @@ test("init scaffolds, vendors CLI, validate + doctor pass", () => {
   assert.ok(fs.existsSync(path.join(dir, ".project/context.yaml")), "context.yaml");
   assert.ok(fs.existsSync(path.join(dir, "docs/plans/epics/README.md")), "epics dir");
   assert.ok(fs.existsSync(path.join(dir, "scripts/ledger.mjs")), "CLI should be vendored");
+  assert.ok(
+    fs.existsSync(path.join(dir, "scripts/.project-ledger/ledger.mjs")),
+    "vendored CLI body should exist",
+  );
   assert.ok(fs.existsSync(path.join(dir, "docs/agent-protocol.md")));
   assert.ok(fs.existsSync(path.join(dir, "AGENTS.md")));
   assert.ok(fs.existsSync(path.join(dir, ".cursor/rules/security-review.mdc")));
@@ -161,4 +165,84 @@ test("validate-on-stop uses local CLI not npm registry", () => {
   assert.equal(out.status, 0, out.stderr || out.stdout);
   assert.match(out.stdout.trim(), /^\{\}$/);
   assert.doesNotMatch(out.stdout + out.stderr, /E404|registry\.npmjs/);
+});
+
+test("audit chain detects tampering", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "audit"], dir).status, 0);
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const runLocal = (args) => spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: "utf8" });
+  assert.equal(runLocal(["event", "test.ping", "PROJECT-001"]).status, 0);
+  assert.equal(runLocal(["validate"]).status, 0);
+
+  const auditPath = path.join(dir, ".audit/events.jsonl");
+  const lines = fs.readFileSync(auditPath, "utf8").trim().split("\n");
+  const last = JSON.parse(lines[lines.length - 1]);
+  last.event_hash = "0000000000000000";
+  lines[lines.length - 1] = JSON.stringify(last);
+  fs.writeFileSync(auditPath, lines.join("\n") + "\n");
+
+  const val = runLocal(["validate"]);
+  assert.notEqual(val.status, 0);
+  assert.match(val.stderr + val.stdout, /AUDIT_HASH_MISMATCH|VALIDATE FAIL/);
+});
+
+test("new task without plan fails; revise unknown fails", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "fail"], dir).status, 0);
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const runLocal = (args) => spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: "utf8" });
+
+  const task = runLocal(["new", "task", "Nope"]);
+  assert.notEqual(task.status, 0);
+  assert.match(task.stderr + task.stdout, /requires --plan/);
+
+  const rev = runLocal(["revise", "SPEC-9999"]);
+  assert.notEqual(rev.status, 0);
+});
+
+test("hooks install writes pre-commit", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "hooks"], dir).status, 0);
+  spawnSync("git", ["init"], { cwd: dir, encoding: "utf8" });
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const out = spawnSync(process.execPath, [bin, "hooks", "install"], { cwd: dir, encoding: "utf8" });
+  assert.equal(out.status, 0, out.stderr || out.stdout);
+  const hook = path.join(dir, ".git/hooks/pre-commit");
+  assert.ok(fs.existsSync(hook));
+  assert.match(fs.readFileSync(hook, "utf8"), /ledger\.mjs validate/);
+});
+
+test("init installs CI workflow", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "ci"], dir).status, 0);
+  assert.ok(fs.existsSync(path.join(dir, ".github/workflows/project-ledger.yml")));
+});
+
+test("doctor fails when .cursorignore hides ledger (WRONG)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "ign"], dir).status, 0);
+  fs.writeFileSync(path.join(dir, ".cursorignore"), ".cursor/\ndocs/\nAGENTS.md\n");
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  // init/upgrade patches cursorignore; rewrite after to simulate broken project
+  fs.writeFileSync(path.join(dir, ".cursorignore"), ".cursor/\ndocs/\n");
+  const doc = spawnSync(process.execPath, [bin, "doctor"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, LEDGER_PKG_ROOT: PKG },
+  });
+  assert.notEqual(doc.status, 0);
+  assert.match(doc.stderr + doc.stdout, /WRONG|cursorignore|FAIL/);
+});
+
+test("only one alwaysApply Cursor rule after init", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "rules"], dir).status, 0);
+  const rulesDir = path.join(dir, ".cursor/rules");
+  const always = fs
+    .readdirSync(rulesDir)
+    .filter((n) => n.endsWith(".mdc"))
+    .filter((n) => /alwaysApply:\s*true/.test(fs.readFileSync(path.join(rulesDir, n), "utf8")));
+  assert.equal(always.length, 1, `expected 1 alwaysApply, got ${always.join(",")}`);
+  assert.equal(always[0], "project-ledger.mdc");
 });

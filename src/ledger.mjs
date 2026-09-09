@@ -5,476 +5,25 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-/** Target project root — cwd, or LEDGER_ROOT override */
-const ROOT = path.resolve(process.env.LEDGER_ROOT || process.cwd());
-const PORT = Number(process.env.LEDGER_PORT || 3847);
-
-function resolvePkgRoot() {
-  const candidates = [
-    process.env.LEDGER_PKG_ROOT,
-    path.resolve(__dirname, ".."),
-    path.resolve(__dirname, "../.."),
-    path.join(ROOT, "node_modules/project-ledger"),
-    path.resolve(ROOT, "../project-ledger"),
-  ].filter(Boolean);
-  for (const c of candidates) {
-    if (
-      fs.existsSync(path.join(c, "scaffold", ".project", "schemas")) ||
-      fs.existsSync(path.join(c, "scaffold", ".project", "project.yaml"))
-    ) {
-      return path.resolve(c);
-    }
-  }
-  return path.resolve(__dirname, "..");
-}
-
-const PKG_ROOT = resolvePkgRoot();
-
-function abs(p) {
-  return path.join(ROOT, p);
-}
-function read(p) {
-  return fs.readFileSync(abs(p), "utf8");
-}
-function write(p, s) {
-  fs.mkdirSync(path.dirname(abs(p)), { recursive: true });
-  fs.writeFileSync(abs(p), s);
-}
-function exists(p) {
-  return fs.existsSync(abs(p));
-}
-function append(p, line) {
-  fs.appendFileSync(abs(p), line.endsWith("\n") ? line : line + "\n");
-}
-
-function listFiles(rel, filter = () => true) {
-  const base = abs(rel);
-  if (!fs.existsSync(base)) return [];
-  const out = [];
-  const walk = (dir) => {
-    for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, ent.name);
-      if (ent.isDirectory()) walk(full);
-      else if (filter(ent.name, full)) out.push(path.relative(ROOT, full));
-    }
-  };
-  walk(base);
-  return out.sort();
-}
-
-function parseFrontmatter(text) {
-  if (!text.startsWith("---\n")) return { meta: {}, body: text };
-  const end = text.indexOf("\n---\n", 4);
-  if (end < 0) return { meta: {}, body: text };
-  const raw = text.slice(4, end);
-  const meta = {};
-  for (const line of raw.split("\n")) {
-    const m = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
-    if (!m) continue;
-    let v = m[2].trim();
-    if (v === "null") v = null;
-    else if (v === "true") v = true;
-    else if (v === "false") v = false;
-    else if (/^\d+$/.test(v)) v = Number(v);
-    else if (v.startsWith("[") && v.endsWith("]")) {
-      v = v
-        .slice(1, -1)
-        .split(",")
-        .map((s) => s.trim().replace(/^["']|["']$/g, ""))
-        .filter(Boolean);
-    } else {
-      v = v.replace(/^["']|["']$/g, "");
-    }
-    meta[m[1]] = v;
-  }
-  return { meta, body: text.slice(end + 5) };
-}
-
-function loadMd(globDir, prefix) {
-  return listFiles(globDir, (n) => n.startsWith(prefix) && n.endsWith(".md")).map((f) => {
-    const { meta, body } = parseFrontmatter(read(f));
-    return { path: f, meta, body };
-  });
-}
-
-function loadYamlishProject() {
-  const text = read(".project/project.yaml");
-  return {
-    id: text.match(/^\s*id:\s*(.+)$/m)?.[1]?.trim(),
-    name: text.match(/^\s*name:\s*(.+)$/m)?.[1]?.trim(),
-    version: text.match(/^\s*version:\s*(.+)$/m)?.[1]?.trim(),
-    ledger_version: text.match(/^\s*ledger_version:\s*["']?(.+?)["']?\s*$/m)?.[1]?.trim(),
-  };
-}
-
-function yamlScalar(v) {
-  if (v == null || v === "null") return null;
-  const s = String(v).trim();
-  if (s === "null" || s === "") return null;
-  return s.replace(/^["']|["']$/g, "");
-}
-
-function loadRules() {
-  if (!exists(".project/project.yaml")) return {};
-  const text = read(".project/project.yaml");
-  const rules = {};
-  let inRules = false;
-  for (const line of text.split("\n")) {
-    if (/^rules:\s*$/.test(line)) {
-      inRules = true;
-      continue;
-    }
-    if (inRules) {
-      if (/^[a-z_]+:\s*/.test(line) && !/^\s/.test(line)) break;
-      const m = line.match(/^\s+([a-z_]+):\s*(.+)$/);
-      if (m) rules[m[1]] = m[2].trim() === "true";
-    }
-  }
-  return rules;
-}
-
-function loadContext() {
-  const empty = {
-    current_epic: null,
-    current_plan: null,
-    current_task: null,
-    current_spec: null,
-    current_req: null,
-    notes: null,
-    updated_at: null,
-    updated_by: null,
-  };
-  if (!exists(".project/context.yaml")) return empty;
-  const text = read(".project/context.yaml");
-  const ctx = { ...empty };
-  for (const key of Object.keys(empty)) {
-    const m = text.match(new RegExp(`^${key}:\\s*(.*)$`, "m"));
-    if (m) ctx[key] = yamlScalar(m[1]);
-  }
-  return ctx;
-}
-
-function saveContext(ctx) {
-  const lines = [
-    "# Active work pointer — any harness agent: run `ledger context` first in a new chat.",
-    '# Update with: ledger focus <EPIC-|PLAN-|TASK-|SPEC-|REQ- id> [--notes "..."]',
-    `current_epic: ${ctx.current_epic ?? "null"}`,
-    `current_plan: ${ctx.current_plan ?? "null"}`,
-    `current_task: ${ctx.current_task ?? "null"}`,
-    `current_spec: ${ctx.current_spec ?? "null"}`,
-    `current_req: ${ctx.current_req ?? "null"}`,
-    `notes: ${ctx.notes == null ? "null" : JSON.stringify(String(ctx.notes))}`,
-    `updated_at: ${ctx.updated_at ?? "null"}`,
-    `updated_by: ${ctx.updated_by ?? "null"}`,
-    "",
-  ];
-  write(".project/context.yaml", lines.join("\n"));
-}
-
-function nextId(prefix, items) {
-  const nums = items
-    .map((it) => Number(String(it.meta?.id || it.id || "").replace(new RegExp(`^${prefix}-`), "")))
-    .filter((n) => !Number.isNaN(n));
-  const n = (nums.length ? Math.max(...nums) : 0) + 1;
-  return `${prefix}-${String(n).padStart(4, "0")}`;
-}
-
-function loadPeople() {
-  if (!exists(".project/people.yaml")) return [];
-  const text = read(".project/people.yaml");
-  const people = [];
-  let cur = null;
-  for (const line of text.split("\n")) {
-    if (line.match(/^\s*-\s*id:\s*(.+)/)) {
-      if (cur) people.push(cur);
-      cur = { id: line.match(/^\s*-\s*id:\s*(.+)/)[1].trim() };
-    } else if (cur) {
-      const m = line.match(/^\s{2,}([a-z_]+):\s*(.+)$/);
-      if (m) cur[m[1]] = m[2].trim() === "null" ? null : m[2].trim();
-    }
-  }
-  if (cur) people.push(cur);
-  return people;
-}
-
-function events() {
-  if (!exists(".audit/events.jsonl")) return [];
-  return read(".audit/events.jsonl")
-    .split("\n")
-    .filter(Boolean)
-    .map((line, i) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        throw new Error(`Invalid JSONL at line ${i + 1} in .audit/events.jsonl`);
-      }
-    });
-}
-
-function graph() {
-  return {
-    project: loadYamlishProject(),
-    people: loadPeople(),
-    epics: loadMd("docs/plans/epics", "EPIC-"),
-    requirements: loadMd("docs/product/requirements", "REQ-"),
-    specs: listFiles("docs/product/specs", (n) => n === "index.md").map((f) => {
-      const { meta, body } = parseFrontmatter(read(f));
-      return { path: f, meta, body };
-    }),
-    revisions: listFiles("docs/product/specs", (n) => /^v\d+\.md$/.test(n)).map((f) => {
-      const { meta, body } = parseFrontmatter(read(f));
-      return { path: f, meta, body };
-    }),
-    decisions: loadMd("docs/architecture/adr", "ADR-"),
-    plans: loadMd("docs/plans/features", "PLAN-"),
-    tasks: loadMd("docs/plans/tasks", "TASK-"),
-    runs: loadMd(".engineering/agent-runs", "RUN-"),
-    changes: loadMd(".engineering/change-records", "CHG-"),
-    evidence: loadMd(".engineering/evidence", "EVD-"),
-    tests: loadMd(".engineering/tests", "TEST-"),
-    releases: loadMd(".engineering/releases", "REL-"),
-    events: events(),
-    context: loadContext(),
-    rules: loadRules(),
-  };
-}
-
-function counts(g = graph()) {
-  return {
-    epics: g.epics.length,
-    requirements: g.requirements.length,
-    sow_revisions: listFiles("docs/product/sow", (n) => /^v\d+\.md$/.test(n)).length,
-    specifications: g.specs.length,
-    spec_revisions: g.revisions.length,
-    decisions: g.decisions.length,
-    plans: g.plans.length,
-    tasks: g.tasks.length,
-    agent_runs: g.runs.length,
-    changes: g.changes.length,
-    evidence: g.evidence.length,
-    tests: g.tests.length,
-    releases: g.releases.length,
-    events: g.events.length,
-  };
-}
-
-function asArr(v) {
-  if (!v) return [];
-  return Array.isArray(v) ? v : [v];
-}
-
-function fileMatches(files, norm) {
-  return asArr(files).some((f) => {
-    const clean = f.replace(/\/$/, "");
-    return norm === f || norm === clean || norm.startsWith(clean + "/") || norm.startsWith(f);
-  });
-}
-
-function findFileHits(g, norm) {
-  const hitTasks = g.tasks.filter((t) => fileMatches(t.meta.files, norm) || t.body.includes(norm));
-  const hitChanges = g.changes.filter((c) => fileMatches(c.meta.files, norm) || c.body.includes(norm));
-  return { hitTasks, hitChanges };
-}
-
-function resolveChain(g, task, change) {
-  const runId = asArr(task?.meta?.agent_runs)[0] || change?.meta?.agent_run;
-  const run = g.runs.find((r) => r.meta.id === runId);
-  const planId = task?.meta?.plan || run?.meta?.plan;
-  const plan = g.plans.find((p) => p.meta.id === planId);
-  const epicId = yamlScalar(task?.meta?.epic) || yamlScalar(plan?.meta?.epic);
-  const epic = g.epics.find((e) => e.meta.id === epicId);
-  const specRef = plan?.meta?.spec || run?.meta?.spec;
-  const specId = specRef?.split("@")[0];
-  const rev = Number(specRef?.split("@")[1] || 0);
-  const spec = g.specs.find((s) => s.meta.id === specId);
-  const req =
-    g.requirements.find((r) => asArr(r.meta.specs).includes(specId)) ||
-    g.requirements.find((r) => yamlScalar(r.meta.epic) === epicId);
-  const adrIds = asArr(plan?.meta?.decisions);
-  const adrs = g.decisions.filter((a) => adrIds.includes(a.meta.id));
-  const evidence = g.evidence.filter((e) => e.meta.agent_run === runId || asArr(run?.meta?.evidence).includes(e.meta.id));
-  return { run, plan, epic, epicId, specRef, specId, rev, spec, req, adrs, evidence };
-}
-
-function computeDrift(g = graph()) {
-  const issues = [];
-
-  for (const run of g.runs) {
-    const specRef = run.meta.spec;
-    if (!specRef || !String(specRef).includes("@")) {
-      issues.push({ level: "warn", code: "RUN_NO_SPEC_PIN", msg: `${run.meta.id} has no SPEC@rev pin` });
-      continue;
-    }
-    const [sid, revS] = String(specRef).split("@");
-    const rev = Number(revS);
-    const spec = g.specs.find((s) => s.meta.id === sid);
-    if (!spec) {
-      issues.push({ level: "error", code: "RUN_SPEC_MISSING", msg: `${run.meta.id} pins missing ${sid}` });
-      continue;
-    }
-    if (Number(spec.meta.current_revision) > rev) {
-      issues.push({
-        level: "warn",
-        code: "STALE_RUN",
-        msg: `${run.meta.id} implemented ${specRef} but current is ${sid}@${spec.meta.current_revision} — implementation may be out of date`,
-      });
-    }
-  }
-
-  for (const req of g.requirements) {
-    if (req.meta.status === "active" && !asArr(req.meta.specs).length) {
-      issues.push({ level: "warn", code: "REQ_NO_SPEC", msg: `${req.meta.id} is active but has no specs` });
-    }
-    for (const sid of asArr(req.meta.specs)) {
-      if (!g.specs.some((s) => s.meta.id === sid)) {
-        issues.push({ level: "error", code: "REQ_SPEC_MISSING", msg: `${req.meta.id} references missing ${sid}` });
-      }
-    }
-  }
-
-  for (const plan of g.plans) {
-    const specRef = plan.meta.spec;
-    if (specRef) {
-      const sid = String(specRef).split("@")[0];
-      if (!g.specs.some((s) => s.meta.id === sid)) {
-        issues.push({ level: "error", code: "PLAN_SPEC_MISSING", msg: `${plan.meta.id} references missing ${sid}` });
-      }
-    }
-    for (const tid of asArr(plan.meta.tasks)) {
-      if (!g.tasks.some((t) => t.meta.id === tid)) {
-        issues.push({ level: "error", code: "PLAN_TASK_MISSING", msg: `${plan.meta.id} references missing ${tid}` });
-      }
-    }
-    for (const did of asArr(plan.meta.decisions)) {
-      if (!g.decisions.some((d) => d.meta.id === did)) {
-        issues.push({ level: "error", code: "PLAN_ADR_MISSING", msg: `${plan.meta.id} references missing ${did}` });
-      }
-    }
-  }
-
-  for (const task of g.tasks) {
-    if (task.meta.plan && !g.plans.some((p) => p.meta.id === task.meta.plan)) {
-      issues.push({ level: "error", code: "TASK_PLAN_MISSING", msg: `${task.meta.id} references missing ${task.meta.plan}` });
-    }
-    const epicId = yamlScalar(task.meta.epic);
-    if (epicId && !g.epics.some((e) => e.meta.id === epicId)) {
-      issues.push({ level: "error", code: "TASK_EPIC_MISSING", msg: `${task.meta.id} references missing ${epicId}` });
-    }
-  }
-
-  for (const plan of g.plans) {
-    const epicId = yamlScalar(plan.meta.epic);
-    if (epicId && !g.epics.some((e) => e.meta.id === epicId)) {
-      issues.push({ level: "error", code: "PLAN_EPIC_MISSING", msg: `${plan.meta.id} references missing ${epicId}` });
-    }
-  }
-
-  for (const epic of g.epics) {
-    for (const pid of asArr(epic.meta.plans)) {
-      if (!g.plans.some((p) => p.meta.id === pid)) {
-        issues.push({ level: "error", code: "EPIC_PLAN_MISSING", msg: `${epic.meta.id} references missing ${pid}` });
-      }
-    }
-    for (const rid of asArr(epic.meta.requirements)) {
-      if (!g.requirements.some((r) => r.meta.id === rid)) {
-        issues.push({ level: "error", code: "EPIC_REQ_MISSING", msg: `${epic.meta.id} references missing ${rid}` });
-      }
-    }
-  }
-
-  for (const req of g.requirements) {
-    const epicId = yamlScalar(req.meta.epic);
-    if (epicId && !g.epics.some((e) => e.meta.id === epicId)) {
-      issues.push({ level: "error", code: "REQ_EPIC_MISSING", msg: `${req.meta.id} references missing ${epicId}` });
-    }
-  }
-
-  const rules = g.rules || {};
-  if (rules.implementation_requires_spec) {
-    for (const plan of g.plans) {
-      if (["approved", "in_progress", "done"].includes(plan.meta.status) && !plan.meta.spec) {
-        issues.push({
-          level: "error",
-          code: "RULE_SPEC_REQUIRED",
-          msg: `${plan.meta.id} status=${plan.meta.status} but rules.implementation_requires_spec`,
-        });
-      }
-    }
-  }
-  if (rules.implementation_requires_plan) {
-    for (const task of g.tasks) {
-      if (["in_progress", "done"].includes(task.meta.status) && !task.meta.plan) {
-        issues.push({
-          level: "error",
-          code: "RULE_PLAN_REQUIRED",
-          msg: `${task.meta.id} status=${task.meta.status} but rules.implementation_requires_plan`,
-        });
-      }
-    }
-  }
-  if (rules.agent_runs_required) {
-    for (const task of g.tasks) {
-      if (task.meta.status === "done" && !asArr(task.meta.agent_runs).length) {
-        issues.push({
-          level: "error",
-          code: "RULE_RUN_REQUIRED",
-          msg: `${task.meta.id} is done but rules.agent_runs_required and no agent_runs`,
-        });
-      }
-    }
-  }
-  if (rules.evidence_required) {
-    for (const run of g.runs) {
-      if (["completed", "done"].includes(run.meta.status) && !asArr(run.meta.evidence).length) {
-        const hasEv = g.evidence.some((e) => e.meta.agent_run === run.meta.id);
-        if (!hasEv) {
-          issues.push({
-            level: "warn",
-            code: "RULE_EVIDENCE_REQUIRED",
-            msg: `${run.meta.id} completed but rules.evidence_required and no evidence linked`,
-          });
-        }
-      }
-    }
-  }
-
-  for (const d of g.decisions) {
-    if (d.meta.status === "proposed") {
-      issues.push({ level: "warn", code: "UNRESOLVED_DECISION", msg: `${d.meta.id} is still proposed` });
-    }
-  }
-
-  const tracedFeatures = g.plans.filter((p) => {
-    const tasks = asArr(p.meta.tasks);
-    if (!tasks.length) return false;
-    return tasks.every((tid) => {
-      const t = g.tasks.find((x) => x.meta.id === tid);
-      return t && asArr(t.meta.agent_runs).some((rid) => g.runs.some((r) => r.meta.id === rid));
-    });
-  }).length;
-
-  return { issues, tracedFeatures, totalPlans: g.plans.length };
-}
-
-function nextEventId() {
-  const ids = events()
-    .map((e) => Number(String(e.id).replace("EVT-", "")))
-    .filter((n) => !Number.isNaN(n));
-  const n = (ids.length ? Math.max(...ids) : 0) + 1;
-  return `EVT-${String(n).padStart(6, "0")}`;
-}
-
-function bodyHash(rel) {
-  const { body } = parseFrontmatter(read(rel));
-  return crypto.createHash("sha256").update(body).digest("hex").slice(0, 16);
-}
+import { ROOT, PORT, PKG_ROOT, abs, read, write, exists, append, listFiles } from "./lib/paths.mjs";
+import {
+  parseFrontmatter,
+  yamlScalar,
+  loadContext,
+  saveContext,
+  events,
+  nextId,
+  asArr,
+  setFrontmatterField,
+  bodyHash,
+  nextEventId,
+  appendAgentTrace,
+  appendAuditEvent,
+  hashEvent,
+} from "./lib/parse.mjs";
+import { graph, counts, fileMatches, findFileHits, resolveChain, computeDrift } from "./lib/model.mjs";
 
 function usage() {
   console.log(`Project Ledger
@@ -526,6 +75,126 @@ function copyDir(src, dest, { force = false } = {}) {
     }
   }
   return n;
+}
+
+/** Paths Cursor/agents must be able to read for Project Ledger to work. */
+const LEDGER_MUST_READ = [
+  "AGENTS.md",
+  "docs/agent-protocol.md",
+  ".project/project.yaml",
+  ".project/context.yaml",
+  ".cursor/rules/project-ledger.mdc",
+  ".cursor/hooks.json",
+  "scripts/ledger.mjs",
+];
+
+function gitignorePatternMatches(pattern, relPath) {
+  let p = String(pattern || "").trim();
+  if (!p || p.startsWith("#") || p.startsWith("!")) return false;
+  const rooted = p.startsWith("/");
+  if (rooted) p = p.slice(1);
+  const dirOnly = p.endsWith("/");
+  if (dirOnly) p = p.slice(0, -1);
+  // Escape regex specials except * and ?
+  let reSrc = p
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, "{{GLOBSTAR}}")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\?/g, "[^/]")
+    .replace(/\{\{GLOBSTAR\}\}/g, ".*");
+  if (rooted) {
+    const re = new RegExp(`^${reSrc}(/|$)`);
+    return re.test(relPath);
+  }
+  // Unrooted: match any path segment prefix or full path
+  const re = new RegExp(`(^|/)${reSrc}(/|$)`);
+  return re.test(relPath);
+}
+
+function collectIgnoreConflicts(ignoreFileRel) {
+  if (!exists(ignoreFileRel)) return [];
+  const lines = read(ignoreFileRel).split("\n");
+  const issues = [];
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#") || line.startsWith("!")) continue;
+    for (const must of LEDGER_MUST_READ) {
+      if (gitignorePatternMatches(line, must) || gitignorePatternMatches(line, path.dirname(must))) {
+        issues.push({ file: ignoreFileRel, pattern: line, blocks: must });
+      }
+      // blocking entire trees
+      if (
+        (line === ".cursor" || line === ".cursor/" || line === "/.cursor" || line === "/.cursor/") &&
+        must.startsWith(".cursor/")
+      ) {
+        issues.push({ file: ignoreFileRel, pattern: line, blocks: must });
+      }
+      if ((line === "docs" || line === "docs/" || line === "/docs" || line === "/docs/") && must.startsWith("docs/")) {
+        issues.push({ file: ignoreFileRel, pattern: line, blocks: must });
+      }
+      if (
+        (line === ".project" || line === ".project/" || line === "/.project" || line === "/.project/") &&
+        must.startsWith(".project/")
+      ) {
+        issues.push({ file: ignoreFileRel, pattern: line, blocks: must });
+      }
+    }
+  }
+  // de-dupe
+  const seen = new Set();
+  return issues.filter((i) => {
+    const k = `${i.file}|${i.pattern}|${i.blocks}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function reportCursorIgnoreWrong({ hard = false } = {}) {
+  const issues = [...collectIgnoreConflicts(".cursorignore"), ...collectIgnoreConflicts(".gitignore")].filter((i) => {
+    // .gitignore ignoring scripts is often OK for build artifacts — only fail cursorignore + critical gitignore of .cursor/docs/.project/AGENTS
+    if (i.file === ".gitignore" && (i.blocks.startsWith("scripts/") || i.blocks === "scripts/ledger.mjs")) return false;
+    return true;
+  });
+  if (!issues.length) return true;
+  console.error("");
+  console.error("WRONG: ignore rules hide Project Ledger / Cursor adapters.");
+  console.error("Cursor will not load rules or the agent cannot read the protocol.");
+  console.error("Fix .cursorignore (and .gitignore if needed) — do NOT ignore:");
+  console.error("  AGENTS.md  docs/  .project/  .cursor/rules/  .cursor/hooks.json  scripts/ledger.mjs");
+  for (const i of issues) {
+    console.error(`  - ${i.file} pattern "${i.pattern}" blocks ${i.blocks}`);
+  }
+  console.error("Then: node scripts/ledger.mjs doctor");
+  console.error("");
+  if (hard) process.exit(1);
+  return false;
+}
+
+function ensureCursorIgnoreSafe() {
+  // If .cursorignore exists and is wrong, leave it but report; also write un-ignore hints when creating new file
+  if (!exists(".cursorignore")) return;
+  // Append rescue negations only if missing and conflicts exist
+  const issues = collectIgnoreConflicts(".cursorignore");
+  if (!issues.length) return;
+  let text = read(".cursorignore");
+  const rescue = `
+# --- Project Ledger (AUTO) — these must NOT be ignored by Cursor ---
+!.cursor/
+!.cursor/**
+!AGENTS.md
+!docs/
+!docs/**
+!.project/
+!.project/**
+!scripts/ledger.mjs
+!scripts/.project-ledger/
+!scripts/.project-ledger/**
+`;
+  if (!text.includes("Project Ledger (AUTO)")) {
+    write(".cursorignore", text.trimEnd() + "\n" + rescue);
+    console.log("Patched .cursorignore with Project Ledger un-ignore rules (was wrong to hide them).");
+  }
 }
 
 function patchProjectYaml(name) {
@@ -588,14 +257,21 @@ function mergePackageJsonScripts() {
 }
 
 function vendorCli() {
-  const from = path.join(PKG_ROOT, "src/ledger.mjs");
-  if (!fs.existsSync(from)) {
+  const from = path.join(PKG_ROOT, "src");
+  if (!fs.existsSync(path.join(from, "ledger.mjs"))) {
     console.warn("Could not vendor CLI (src/ledger.mjs missing). Set LEDGER_PKG_ROOT.");
     return false;
   }
-  const dest = abs("scripts/ledger.mjs");
-  fs.mkdirSync(path.dirname(dest), { recursive: true });
-  fs.copyFileSync(from, dest);
+  const destDir = abs("scripts/.project-ledger");
+  copyDir(from, destDir, { force: true });
+  const wrapper = abs("scripts/ledger.mjs");
+  fs.mkdirSync(path.dirname(wrapper), { recursive: true });
+  fs.writeFileSync(
+    wrapper,
+    `#!/usr/bin/env node
+import "./.project-ledger/ledger.mjs";
+`,
+  );
   return true;
 }
 
@@ -608,6 +284,8 @@ function cmdDoctor() {
   ok("docs/agent-protocol.md", exists("docs/agent-protocol.md"));
   ok("AGENTS.md", exists("AGENTS.md"));
   ok("scripts/ledger.mjs", exists("scripts/ledger.mjs"), "Re-run init to vendor local CLI");
+  ok("scripts/.project-ledger/", exists("scripts/.project-ledger/ledger.mjs"), "Re-run init/upgrade to vendor modules");
+  ok("CI workflow", exists(".github/workflows/project-ledger.yml"), "Run: project-ledger upgrade");
   ok(".project/harness/validate-on-stop.sh", exists(".project/harness/validate-on-stop.sh"));
   ok("Cursor rule", exists(".cursor/rules/project-ledger.mdc"));
   ok("find-skills (Cursor)", exists(".cursor/skills/find-skills/SKILL.md"), "Run: project-ledger init --force");
@@ -617,6 +295,39 @@ function cmdDoctor() {
   ok("codebase-style", exists(".cursor/rules/codebase-style.mdc") || exists(".claude/rules/codebase-style.md"));
   ok(`scaffold at PKG_ROOT`, fs.existsSync(path.join(PKG_ROOT, "scaffold")), "npm i -D /path/to/project-ledger or LEDGER_PKG_ROOT");
   ok("docs/plans/epics", exists("docs/plans/epics"), "Run: project-ledger init --force");
+
+  const ignoreIssues = [
+    ...collectIgnoreConflicts(".cursorignore"),
+    ...collectIgnoreConflicts(".gitignore").filter(
+      (i) =>
+        i.blocks.startsWith(".cursor/") ||
+        i.blocks.startsWith("docs/") ||
+        i.blocks.startsWith(".project/") ||
+        i.blocks === "AGENTS.md",
+    ),
+  ];
+  ok(
+    ".cursorignore/.gitignore allow ledger paths",
+    ignoreIssues.length === 0,
+    ignoreIssues.length
+      ? `WRONG: ${ignoreIssues.map((i) => `${i.file}:"${i.pattern}"→${i.blocks}`).join("; ")}`
+      : "",
+  );
+
+  // Only one alwaysApply Cursor rule — too many get silently ignored/downgraded
+  if (exists(".cursor/rules/project-ledger.mdc")) {
+    const always = listFiles(".cursor/rules", (n) => n.endsWith(".mdc")).filter((f) => {
+      const t = read(f);
+      return /^alwaysApply:\s*true\s*$/m.test(t);
+    });
+    ok(
+      "single alwaysApply Cursor rule",
+      always.length <= 1,
+      always.length > 1
+        ? `WRONG: ${always.length} alwaysApply rules (${always.join(", ")}) — Cursor often ignores/downgrades these. Keep only project-ledger.mdc as alwaysApply.`
+        : "",
+    );
+  }
 
   console.log("Project Ledger doctor\n");
   console.log(`ROOT      ${ROOT}`);
@@ -632,6 +343,7 @@ function cmdDoctor() {
   console.log("");
   if (failed) {
     console.log(`${failed} issue(s).`);
+    reportCursorIgnoreWrong({ hard: false });
     process.exit(1);
   }
   cmdValidate();
@@ -703,6 +415,10 @@ function cmdInit(args) {
   mergePackageJsonScripts();
   const vendored = vendorCli();
 
+  // If .cursorignore was hiding Cursor/ledger files, that is wrong — patch + tell the user
+  ensureCursorIgnoreSafe();
+  reportCursorIgnoreWrong({ hard: false });
+
   // bootstrap audit event
   const evPath = abs(".audit/events.jsonl");
   if (!fs.existsSync(evPath) || fs.readFileSync(evPath, "utf8").trim() === "") {
@@ -713,6 +429,7 @@ function cmdInit(args) {
       action: "project.ledger_initialized",
       target: "PROJECT-001",
     };
+    ev.event_hash = hashEvent(ev);
     fs.mkdirSync(path.dirname(evPath), { recursive: true });
     fs.writeFileSync(evPath, JSON.stringify(ev) + "\n");
   }
@@ -720,14 +437,32 @@ function cmdInit(args) {
   console.log(`Project Ledger initialized in ${ROOT}`);
   console.log(`  project name: ${name}`);
   console.log(`  files written/kept: ${n}+ (skipped existing)`);
-  console.log(`  local CLI: ${vendored ? "scripts/ledger.mjs" : "NOT VENDORED"}`);
+  console.log(`  local CLI: ${vendored ? "scripts/ledger.mjs (+ .project-ledger/)" : "NOT VENDORED"}`);
   console.log("");
-  console.log("Next (works offline — no npm registry):");
+  console.log("Production gates (recommended):");
+  console.log("  node scripts/ledger.mjs hooks install   # pre-commit validate+check");
+  console.log("  # CI workflow: .github/workflows/project-ledger.yml (already scaffolded)");
+  console.log("  # Optional: LEDGER_STRICT=1 for stop-hook hard fail");
+  console.log("");
+  console.log("Cursor: open Settings → Rules and confirm project-ledger is Always Apply.");
+  console.log("        Enable Hooks if you want stop/validate reminders.");
+  console.log("        If Cursor ignored the ledger, check .cursorignore — doctor will say WRONG.");
+  console.log("");
+  console.log("Next:");
+  console.log("  node scripts/ledger.mjs doctor");
   console.log("  node scripts/ledger.mjs context");
   console.log("  node scripts/ledger.mjs validate");
-  console.log("  node scripts/ledger.mjs doctor");
-  console.log("  node scripts/ledger.mjs status");
   console.log("  Edit .project/people.yaml and docs/product/vision.md");
+
+  // auto-install git hook when repo exists
+  const gitOk = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: ROOT, encoding: "utf8" });
+  if (gitOk.status === 0) {
+    try {
+      cmdHooksInstall();
+    } catch {
+      console.log("(skipped auto hooks install)");
+    }
+  }
 }
 
 function cmdStatus() {
@@ -862,6 +597,16 @@ function cmdValidate() {
   for (const [i, ev] of g.events.entries()) {
     if (!ev.id || !/^EVT-\d+$/.test(ev.id)) errors.push(`event ${i + 1}: bad id`);
     if (!ev.action || !ev.target || !ev.timestamp || !ev.actor) errors.push(`event ${i + 1}: missing fields`);
+    if (ev.event_hash && hashEvent(ev) !== ev.event_hash) {
+      errors.push(`AUDIT_HASH_MISMATCH: ${ev.id} event_hash does not match payload`);
+    }
+    if (i > 0 && ev.prev_hash) {
+      const prev = g.events[i - 1];
+      const expect = prev.event_hash || hashEvent(prev);
+      if (ev.prev_hash !== expect) {
+        errors.push(`AUDIT_CHAIN_BREAK: ${ev.id} prev_hash does not match previous event`);
+      }
+    }
   }
 
   for (const adr of g.decisions) {
@@ -1034,16 +779,12 @@ function cmdFocus(args) {
   ctx.updated_at = new Date().toISOString();
   ctx.updated_by = actor;
   saveContext(ctx);
-  append(
-    ".audit/events.jsonl",
-    JSON.stringify({
-      id: nextEventId(),
-      timestamp: ctx.updated_at,
-      actor: { type: actor.split(":")[0] || "agent", id: actor.split(":")[1] || actor },
-      action: "context.focus",
-      target: base,
-    }),
-  );
+  appendAuditEvent({
+    timestamp: ctx.updated_at,
+    actor: { type: actor.split(":")[0] || "agent", id: actor.split(":")[1] || actor },
+    action: "context.focus",
+    target: base,
+  });
   appendAgentTrace({ action: "focus", target: base, notes: ctx.notes });
   console.log(`focused ${base}`);
   cmdContext();
@@ -1066,22 +807,7 @@ function parseNewFlags(rest) {
   return { title: titleParts.join(" ").trim(), flags };
 }
 
-function appendAgentTrace(entry) {
-  const rel = ".agent-trace/traces.jsonl";
-  fs.mkdirSync(abs(".agent-trace"), { recursive: true });
-  append(rel, JSON.stringify({ timestamp: new Date().toISOString(), ...entry }));
-}
 
-function setFrontmatterField(text, key, value) {
-  if (!text.startsWith("---\n")) return text;
-  const end = text.indexOf("\n---\n", 4);
-  if (end < 0) return text;
-  let fm = text.slice(4, end);
-  const re = new RegExp(`^${key}:\\s*.*$`, "m");
-  if (re.test(fm)) fm = fm.replace(re, `${key}: ${value}`);
-  else fm += `\n${key}: ${value}`;
-  return `---\n${fm}\n---\n` + text.slice(end + 5);
-}
 
 function cmdNew(kind, rest) {
   if (!kind) {
@@ -1228,16 +954,12 @@ format: productspec
     );
     rel = indexRel;
     id = id;
-    append(
-      ".audit/events.jsonl",
-      JSON.stringify({
-        id: nextEventId(),
-        timestamp: now,
-        actor: { type: flags.actor.split(":")[0] || "agent", id: flags.actor.split(":")[1] || flags.actor },
-        action: "entity.created.spec",
-        target: id,
-      }),
-    );
+    appendAuditEvent({
+      timestamp: now,
+      actor: { type: flags.actor.split(":")[0] || "agent", id: flags.actor.split(":")[1] || flags.actor },
+      action: "entity.created.spec",
+      target: id,
+    });
     appendAgentTrace({ action: "new.spec", target: id, path: indexRel });
     console.log(`created ${indexRel}`);
     console.log(`created ${revRel} (hash ${hash})`);
@@ -1293,16 +1015,12 @@ specs: []
 | 1 | [v1.md](./v1.md) |
 `,
     );
-    append(
-      ".audit/events.jsonl",
-      JSON.stringify({
-        id: nextEventId(),
-        timestamp: now,
-        actor: { type: flags.actor.split(":")[0] || "agent", id: flags.actor.split(":")[1] || flags.actor },
-        action: "entity.created.sow",
-        target: id,
-      }),
-    );
+    appendAuditEvent({
+      timestamp: now,
+      actor: { type: flags.actor.split(":")[0] || "agent", id: flags.actor.split(":")[1] || flags.actor },
+      action: "entity.created.sow",
+      target: id,
+    });
     appendAgentTrace({ action: "new.sow", target: id, path: indexRel });
     console.log(`created ${indexRel}`);
     console.log(`created ${revRel} (hash ${hash})`);
@@ -1468,16 +1186,12 @@ ${title}
     process.exit(1);
   }
   write(rel, body);
-  append(
-    ".audit/events.jsonl",
-    JSON.stringify({
-      id: nextEventId(),
-      timestamp: now,
-      actor: { type: flags.actor.split(":")[0] || "agent", id: flags.actor.split(":")[1] || flags.actor },
-      action: `entity.created.${kind}`,
-      target: id,
-    }),
-  );
+  appendAuditEvent({
+    timestamp: now,
+    actor: { type: flags.actor.split(":")[0] || "agent", id: flags.actor.split(":")[1] || flags.actor },
+    action: `entity.created.${kind}`,
+    target: id,
+  });
   appendAgentTrace({ action: `new.${kind}`, target: id, path: rel });
   console.log(`created ${rel}`);
 
@@ -1542,17 +1256,13 @@ format: productspec
       idx = idx.trimEnd() + `\n| ${next} | [v${next}.md](./v${next}.md) |\n`;
       write(indexPath, idx);
     }
-    append(
-      ".audit/events.jsonl",
-      JSON.stringify({
-        id: nextEventId(),
-        timestamp: now,
-        actor: { type: "agent", id: "ledger" },
-        action: "spec.revised",
-        target: base,
-        revision: next,
-      }),
-    );
+    appendAuditEvent({
+      timestamp: now,
+      actor: { type: "agent", id: "ledger" },
+      action: "spec.revised",
+      target: base,
+      revision: next,
+    });
     appendAgentTrace({ action: "revise.spec", target: `${base}@${next}`, path: nextRel });
     console.log(`created ${nextRel} (hash ${hash})`);
     console.log(`index current_revision → ${next}`);
@@ -1605,17 +1315,13 @@ title: ${meta.title || base}
       idx = idx.trimEnd() + `\n| ${next} | [v${next}.md](./v${next}.md) |\n`;
       write(indexPath, idx);
     }
-    append(
-      ".audit/events.jsonl",
-      JSON.stringify({
-        id: nextEventId(),
-        timestamp: now,
-        actor: { type: "agent", id: "ledger" },
-        action: "sow.revised",
-        target: meta.id || base,
-        revision: next,
-      }),
-    );
+    appendAuditEvent({
+      timestamp: now,
+      actor: { type: "agent", id: "ledger" },
+      action: "sow.revised",
+      target: meta.id || base,
+      revision: next,
+    });
     appendAgentTrace({ action: "revise.sow", target: `${meta.id || base}@${next}`, path: nextRel });
     console.log(`created ${nextRel} (hash ${hash})`);
     console.log(`index current_revision → ${next}`);
@@ -1667,6 +1373,7 @@ function cmdCheck() {
     "AGENTS.md",
     "CLAUDE.md",
     "scripts/ledger.mjs",
+    "scripts/.project-ledger/",
     ".cursor/",
     ".claude/",
     ".github/",
@@ -1741,6 +1448,9 @@ function cmdUpgrade() {
     "AGENTS.md",
     "docs/agent-protocol.md",
     ".cursor/rules/project-ledger.mdc",
+    ".cursor/rules/agent-toolkit.mdc",
+    ".cursor/rules/codebase-style.mdc",
+    ".cursor/rules/security-review.mdc",
     ".claude/rules/project-ledger.md",
     ".project/harness/validate-on-stop.sh",
     ".project/harness/toolkit-reminder.sh",
@@ -1783,6 +1493,12 @@ function cmdUpgrade() {
   console.log(`Upgrade complete (+${n} missing scaffold files)`);
   console.log(`  local CLI: ${vendored ? "scripts/ledger.mjs refreshed" : "NOT VENDORED"}`);
   console.log("  ledger_version → 0.5");
+  console.log("");
+  console.log("Migration notes (0.8 → 0.9):");
+  console.log("  - CLI is modular: scripts/.project-ledger/* must be committed");
+  console.log("  - Audit events now carry event_hash / prev_hash");
+  console.log("  - Run: node scripts/ledger.mjs hooks install");
+  console.log("  - Keep .github/workflows/project-ledger.yml enabled on PRs");
   console.log("Next: node scripts/ledger.mjs doctor && node scripts/ledger.mjs validate");
 }
 
@@ -2170,15 +1886,12 @@ function cmdEvent(action, target, rest) {
       actor = { type, id };
     }
   }
-  const ev = {
-    id: nextEventId(),
-    timestamp: new Date().toISOString(),
+  const ev = appendAuditEvent({
     actor,
     action,
     target,
-  };
-  if (spec) ev.spec = spec;
-  append(".audit/events.jsonl", JSON.stringify(ev));
+    ...(spec ? { spec } : {}),
+  });
   console.log(`appended ${ev.id}`);
 }
 

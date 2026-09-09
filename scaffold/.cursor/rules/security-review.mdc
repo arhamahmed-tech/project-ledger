@@ -1,6 +1,6 @@
 ---
-description: Security and code review for sensitive changes
-alwaysApply: true
+description: Use for auth, payments, PII, admin, uploads, webhooks, secrets, or risky dependency changes
+alwaysApply: false
 ---
 
 # Security & code review

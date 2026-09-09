@@ -1,15 +1,19 @@
 ---
-description: Project Ledger — follow docs/agent-protocol.md (all harnesses)
+description: Project Ledger — always load AGENTS.md + docs/agent-protocol.md (Cursor)
 alwaysApply: true
 ---
 
-# Project Ledger
+# Project Ledger (Cursor)
 
-Canonical protocol: **`docs/agent-protocol.md`** and **`AGENTS.md`**.
+**This rule must apply every chat.** If you do not see it in Cursor Settings → Rules as “Always Apply”, reload the window.
 
-**New chat:** run `node scripts/ledger.mjs context` first; read only those paths.
-Set focus with `ledger focus TASK-####`. Create work with `ledger new …`.
-Before non-trivial implementation: epic → requirement → current SPEC revision → ADRs → plan → task → agent run → evidence.
-Never rewrite immutable SOW/SPEC/ADR history. Run `node scripts/ledger.mjs validate` before claiming ledger completion.
+1. **New chat:** `node scripts/ledger.mjs context` first — read only those paths.
+2. Canonical protocol: `AGENTS.md` + `docs/agent-protocol.md`
+3. Create/switch work: `ledger new …` / `ledger focus TASK-####`
+4. Toolkit order: **skill → find-skills → MCP → hooks → implement**
+5. Match host codebase style; security review for auth/payments/PII/admin/secrets
+6. Before claiming done: `node scripts/ledger.mjs validate`
 
-This rule is the Cursor adapter — Claude Code uses `CLAUDE.md` / `.claude/rules/`; all harnesses share the same protocol file.
+Never rewrite immutable SOW/SPEC/ADR history. Never skip ledger for non-trivial product work.
+
+If `.cursorignore` hides `AGENTS.md`, `docs/`, `.project/`, or `.cursor/rules/`, that is **wrong** — fix it and run `node scripts/ledger.mjs doctor`.

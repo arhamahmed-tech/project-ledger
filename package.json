@@ -1,7 +1,7 @@
 {
   "name": "project-ledger",
-  "version": "0.8.0",
-  "description": "Git-native Project Ledger — epics, tasks, active context, CI gates, diff checks. Offline-friendly init vendors scripts/ledger.mjs so hooks never need npm registry.",
+  "version": "0.9.1",
+  "description": "Git-native Project Ledger — production gates, Cursor-safe rules (single alwaysApply), detects wrong .cursorignore.",
   "type": "module",
   "bin": {
     "project-ledger": "./bin/project-ledger.js",
@@ -12,6 +12,7 @@
     "src",
     "scaffold",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
