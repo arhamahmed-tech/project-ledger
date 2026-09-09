@@ -32,5 +32,13 @@
   "license": "MIT",
   "engines": {
     "node": ">=18"
+  },
+  "homepage": "https://www.npmjs.com/package/project-ledger",
+  "bugs": {
+    "url": "https://github.com/arhamahmed-tech/project-ledger/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arhamahmed-tech/project-ledger.git"
   }
 }
