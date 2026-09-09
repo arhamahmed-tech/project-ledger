@@ -7,15 +7,18 @@ Follow the shared protocol: **[`AGENTS.md`](./AGENTS.md)** and **[`docs/agent-pr
 - Project settings/hooks: `.claude/settings.json`  
 - Personal overrides only: `.claude/settings.local.json` (gitignored)  
 - Extra rules: `.claude/rules/*.md`  
-- Prefer skills under `~/.claude/skills/` and project `.claude/skills/` when present  
-- Use `/find-skills` when a specialized workflow might already exist  
+- Prefer skills under project `.claude/skills/` (ships **find-skills**) and `~/.claude/skills/` when present  
+- Use `/find-skills` or `npx skills find <query>` when a specialized workflow might already exist  
 
 ## Commands
 
 ```bash
-npx project-ledger validate
-npx project-ledger status
-npx project-ledger drift
+node scripts/ledger.mjs context   # first in a new chat
+node scripts/ledger.mjs focus TASK-0001
+node scripts/ledger.mjs new epic "Outcome"
+node scripts/ledger.mjs validate
+node scripts/ledger.mjs status
+node scripts/ledger.mjs drift
 ```
 
 Do **not** diverge from `docs/agent-protocol.md` for Cursor-only rules — the protocol is shared.

@@ -8,6 +8,7 @@
     "id": { "type": "string", "pattern": "^TASK-[0-9]+$" },
     "title": { "type": "string" },
     "status": { "type": "string", "enum": ["todo", "in_progress", "blocked", "done", "cancelled"] },
+    "epic": { "type": ["string", "null"], "pattern": "^EPIC-[0-9]+$" },
     "plan": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
     "agent_runs": { "type": "array", "items": { "type": "string", "pattern": "^RUN-[0-9]+$" } },
     "files": { "type": "array", "items": { "type": "string" } }

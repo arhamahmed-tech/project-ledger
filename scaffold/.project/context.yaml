@@ -1,0 +1,10 @@
+# Active work pointer — any harness agent: run `ledger context` first in a new chat.
+# Update with: ledger focus <EPIC-|PLAN-|TASK-|SPEC-|REQ- id> [--notes "..."]
+current_epic: null
+current_plan: null
+current_task: null
+current_spec: null
+current_req: null
+notes: null
+updated_at: null
+updated_by: null

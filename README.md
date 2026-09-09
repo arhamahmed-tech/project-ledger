@@ -6,7 +6,7 @@
 
 **Git-native Project Ledger** — drop a durable source of truth into any existing repository.
 
-Track requirements, SOW/spec revisions, ADRs, plans, agent runs, and evidence in Git. Ships a CLI plus agent adapters for **Cursor**, **Claude Code**, **GitHub Copilot**, **Codex**, and anything that reads `AGENTS.md`.
+Track epics, requirements, SOW/spec revisions, ADRs, plans, tasks, agent runs, and evidence in Git — plus an **active context** file so a new chat can resume work without re-reading every task. Ships a CLI plus agent adapters for **Cursor**, **Claude Code**, **GitHub Copilot**, **Codex**, and anything that reads `AGENTS.md`.
 
 > Not another SDLC SaaS. A thin protocol + tools around your repo.
 
@@ -46,10 +46,14 @@ npx project-ledger validate
 
 ```bash
 npx project-ledger status
+npx project-ledger context          # resume active epic/plan/task in a new chat
 npx project-ledger validate
 npx project-ledger drift
 npx project-ledger why src/payments/refund.ts
-npx project-ledger impact SPEC-0001
+npx project-ledger impact EPIC-0001
+npx project-ledger new epic "Checkout hardening"
+npx project-ledger new task "Wire refund API" --plan PLAN-0001
+npx project-ledger focus TASK-0001 --notes "edge cases"
 npx project-ledger ui
 ```
 
@@ -67,14 +71,22 @@ pnpm ledger validate   # if package.json scripts were merged
 | Command | Description |
 |---------|-------------|
 | `project-ledger init [--name <app>] [--force]` | Scaffold ledger + harness files; vendor `scripts/ledger.mjs` |
+| `project-ledger upgrade` | Refresh missing scaffold files, vendor CLI, bump `ledger_version` |
 | `project-ledger doctor` | Check setup + run validate |
-| `project-ledger status` | Entity counts + drift summary |
-| `project-ledger validate` | Structural + referential checks |
+| `project-ledger status` | Focus + entity counts + drift summary |
+| `project-ledger context` | Print active epic/plan/task paths for a new chat |
+| `project-ledger focus <id>` | Set active context (`EPIC`/`PLAN`/`TASK`/`SPEC`/`REQ`); `--clear` to reset |
+| `project-ledger new <kind> <title>` | Create epic/req/spec/sow/plan/task/adr/run/chg/evd/test/rel |
+| `project-ledger revise <SPEC-\|SOW-*>` | New immutable revision + `content_hash` |
+| `project-ledger validate` | Structural + referential + `rules:` + hash checks |
+| `project-ledger check` | Git diff vs TASK/CHG `files:` (CI / pre-commit) |
+| `project-ledger hooks install` | Install `.git/hooks/pre-commit` (validate + check) |
+| `project-ledger trace <note>` | Append `.agent-trace/traces.jsonl` |
 | `project-ledger history <id>` | Audit events for an entity |
-| `project-ledger why <path>` | Trace file → REQ / SPEC / ADR / PLAN / RUN |
+| `project-ledger why <path>` | Trace file → EPIC / REQ / SPEC / ADR / PLAN / RUN |
 | `project-ledger who <path>` | Actors linked to a file |
-| `project-ledger drift` | Stale runs, broken links, unresolved decisions |
-| `project-ledger impact <id>` | Impact for `ADR-*` / `REQ-*` / `SPEC-*` / `SOW-*` |
+| `project-ledger drift` | Stale runs, broken links, unresolved decisions, rule violations |
+| `project-ledger impact <id>` | Impact for `EPIC-*` / `ADR-*` / `REQ-*` / `SPEC-*` / `SOW-*` |
 | `project-ledger timeline [n]` | Recent audit events |
 | `project-ledger decisions` | List ADRs |
 | `project-ledger event <action> <target>` | Append audit event |
@@ -89,10 +101,12 @@ Binary aliases: `project-ledger` and `ledger`.
 
 | Area | Details |
 |------|---------|
-| **Intent** | Versioned SOW / REQ / ProductSpec-compatible SPEC revisions (immutable history) |
+| **Intent** | Epics, versioned SOW / REQ / ProductSpec-compatible SPEC revisions (immutable history) |
 | **Decisions** | ADRs (supersede, never rewrite) |
 | **Execution** | Plans, tasks, agent runs, change records, evidence |
-| **Audit** | Append-only `.audit/events.jsonl` |
+| **Context** | `.project/context.yaml` + `ledger context` / `ledger focus` for chat handoff |
+| **Gates** | CI workflow, `ledger check`, optional `hooks install`, `LEDGER_STRICT=1` |
+| **Audit** | Append-only `.audit/events.jsonl` + `.agent-trace/traces.jsonl` |
 | **Agents** | Skills / find-skills, MCP, hooks, security review, host codebase style |
 | **Harnesses** | Cursor · Claude Code · Copilot · generic `AGENTS.md` |
 
@@ -121,9 +135,12 @@ After `init`, scripts typically look like:
   "scripts": {
     "ledger": "node scripts/ledger.mjs",
     "ledger:status": "node scripts/ledger.mjs status",
+    "ledger:context": "node scripts/ledger.mjs context",
     "ledger:validate": "node scripts/ledger.mjs validate",
+    "ledger:check": "node scripts/ledger.mjs check",
     "ledger:doctor": "node scripts/ledger.mjs doctor",
     "ledger:drift": "node scripts/ledger.mjs drift",
+    "ledger:upgrade": "node scripts/ledger.mjs upgrade",
     "ledger:ui": "node scripts/ledger.mjs ui"
   }
 }
@@ -139,6 +156,8 @@ After `init`, scripts typically look like:
 | `LEDGER_PKG_ROOT` | Override package root when resolving `scaffold/` |
 | `LEDGER_PORT` | Dashboard port (default: `3847`) |
 | `LEDGER_ALLOW_NPX` | Set to `1` only if you want hooks to fall back to `npx` |
+| `LEDGER_STRICT` | Set to `1` so stop hooks exit non-zero on validate failure |
+| `LEDGER_DIFF_RANGE` | Git range for `check` (e.g. `main...HEAD` in CI) |
 
 ---
 

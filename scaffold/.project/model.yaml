@@ -1,7 +1,8 @@
-# Project Ledger data model (V0.3)
+# Project Ledger data model (V0.4)
 entities:
   - PROJECT
   - PERSON
+  - EPIC
   - REQUIREMENT
   - SOW
   - SOW_REVISION
@@ -18,6 +19,7 @@ entities:
   - EVENT
 
 chain:
+  - EPIC
   - SOW
   - SOW_REVISION
   - REQUIREMENT
@@ -37,6 +39,7 @@ conventions:
   machine_history: .engineering/
   audit: .audit/events.jsonl
   agent_attribution: .agent-trace/
+  active_context: .project/context.yaml
   specs: ProductSpec-compatible markdown under docs/product/specs/<SPEC-ID>/v<N>.md
   decisions: immutable ADRs; supersede via new ADR, never rewrite
   events: append-only JSONL

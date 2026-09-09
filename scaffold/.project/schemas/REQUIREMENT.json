@@ -9,6 +9,7 @@
     "title": { "type": "string" },
     "status": { "type": "string", "enum": ["draft", "active", "deprecated", "done"] },
     "priority": { "type": "string", "enum": ["p0", "p1", "p2", "p3"] },
+    "epic": { "type": ["string", "null"], "pattern": "^EPIC-[0-9]+$" },
     "specs": { "type": "array", "items": { "type": "string", "pattern": "^SPEC-[0-9]+$" } },
     "changed_by": { "type": "string" },
     "change_count": { "type": "integer", "minimum": 0 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Shared stop/validate hook for Cursor + Claude Code.
 # Prefer local CLI — never hit npm registry unless LEDGER_ALLOW_NPX=1.
+# LEDGER_STRICT=1 → exit non-zero on validate failure (harder gate).
 set -euo pipefail
 cat >/dev/null 2>&1 || true
 
@@ -59,6 +60,9 @@ run_validate() {
 if ! run_validate >/tmp/ledger-harness-validate.txt 2>&1; then
   detail=$(tr '\n' ' ' </tmp/ledger-harness-validate.txt | sed 's/"/\\"/g' | cut -c1-400)
   printf '%s\n' "{\"followup_message\":\"Ledger validate FAILED. ${detail}\"}"
+  if [ "${LEDGER_STRICT:-}" = "1" ]; then
+    exit 1
+  fi
   exit 0
 fi
 

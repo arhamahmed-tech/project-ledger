@@ -1,4 +1,10 @@
 # Agent Trace
 
-Local Agent Trace JSONL (`traces.jsonl`) lives here.  
-Use the standard Agent Trace format — do not invent a parallel schema.
+Local JSONL at `traces.jsonl` (gitignored). Written by:
+
+```bash
+node scripts/ledger.mjs trace "started refund edge case"
+# also auto-appended on: ledger focus / ledger new / ledger revise
+```
+
+Keep entries small: timestamp, action, target, optional note. Do not invent a parallel schema.

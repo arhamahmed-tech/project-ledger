@@ -21,23 +21,51 @@ Git is the source of truth for intent and history.
 | Layer | Path |
 |-------|------|
 | Constitution | `.project/project.yaml` |
+| Active context | `.project/context.yaml` |
 | Human docs | `docs/` |
 | Engineering history | `.engineering/` |
 | Audit | `.audit/events.jsonl` |
 | Agent attribution | `.agent-trace/` |
 
+### New chat bootstrap (any harness)
+
+```bash
+node scripts/ledger.mjs context
+# or: npx project-ledger context
+```
+
+That prints the focused epic/plan/task/spec and **only the files to read**. Do not walk all of `docs/plans/tasks/`.
+
+Set or switch focus:
+
+```bash
+node scripts/ledger.mjs focus TASK-0003 --notes "refund edge case"
+node scripts/ledger.mjs new task "Wire refund API" --plan PLAN-0001   # auto-focuses
+node scripts/ledger.mjs focus --clear
+```
+
+Hard gates (optional but recommended):
+
+```bash
+node scripts/ledger.mjs hooks install          # pre-commit: validate + check
+# CI: .github/workflows/project-ledger.yml (installed by init/upgrade)
+LEDGER_STRICT=1                                # stop hooks exit non-zero on validate fail
+```
+
 CLI (any of):
 
 ```bash
-npx project-ledger validate
-npx project-ledger status
-npx project-ledger drift
-npx project-ledger why <path>
-npx project-ledger ui
+node scripts/ledger.mjs validate
+node scripts/ledger.mjs check
+node scripts/ledger.mjs status
+node scripts/ledger.mjs drift
+node scripts/ledger.mjs why <path>
+node scripts/ledger.mjs impact EPIC-0001
+node scripts/ledger.mjs ui
 ```
 
-Before non-trivial work: REQ → SPEC@rev → ADR → PLAN → TASK → RUN → evidence.  
-Never rewrite immutable SOW/SPEC revisions or accepted ADRs — supersede.  
+Chain: **EPIC → REQ → SPEC@rev → ADR → PLAN → TASK → RUN → evidence**.  
+Never rewrite immutable SOW/SPEC revisions or accepted ADRs — supersede via `ledger revise`.  
 Never claim completion without verification + evidence.
 
 ## Security & code review

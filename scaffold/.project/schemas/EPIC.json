@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/EPIC.json",
+  "title": "EPIC",
+  "type": "object",
+  "required": ["id", "title", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^EPIC-[0-9]+$" },
+    "title": { "type": "string" },
+    "status": { "type": "string", "enum": ["draft", "active", "done", "cancelled"] },
+    "requirements": { "type": "array", "items": { "type": "string", "pattern": "^REQ-[0-9]+$" } },
+    "plans": { "type": "array", "items": { "type": "string", "pattern": "^PLAN-[0-9]+$" } }
+  },
+  "additionalProperties": true
+}

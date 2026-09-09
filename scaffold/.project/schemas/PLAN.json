@@ -8,6 +8,7 @@
     "id": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
     "title": { "type": "string" },
     "status": { "type": "string", "enum": ["draft", "approved", "in_progress", "done", "cancelled"] },
+    "epic": { "type": ["string", "null"], "pattern": "^EPIC-[0-9]+$" },
     "spec": { "type": "string", "pattern": "^SPEC-[0-9]+@[0-9]+$" },
     "decisions": { "type": "array", "items": { "type": "string", "pattern": "^ADR-[0-9]+$" } },
     "tasks": { "type": "array", "items": { "type": "string", "pattern": "^TASK-[0-9]+$" } }

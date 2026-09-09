@@ -2,7 +2,7 @@ project:
   id: PROJECT-001
   name: my-project
   version: 0.1.0
-  ledger_version: "0.3"
+  ledger_version: "0.5"
 
 source_of_truth:
   repository: git
@@ -11,6 +11,7 @@ source_of_truth:
   sow: docs/product/sow
   specifications: docs/product/specs
   decisions: docs/architecture/adr
+  epics: docs/plans/epics
   plans: docs/plans
   agent_runs: .engineering/agent-runs
   evidence: .engineering/evidence
@@ -18,6 +19,7 @@ source_of_truth:
   releases: .engineering/releases
   audit_log: .audit/events.jsonl
   agent_trace: .agent-trace/traces.jsonl
+  active_context: .project/context.yaml
   schemas: .project/schemas
   templates: .project/templates
 
@@ -36,6 +38,7 @@ rules:
 id_prefixes:
   PROJECT: PROJECT
   PERSON: USER
+  EPIC: EPIC
   REQUIREMENT: REQ
   SOW: SOW
   SPEC: SPEC
