@@ -1,7 +1,7 @@
 {
   "name": "project-ledger",
-  "version": "0.10.2",
-  "description": "Git-native Project Ledger — adopt mid-build repos, inventory, next/handoff/board/done/review.",
+  "version": "0.11.0",
+  "description": "Git-native Project Ledger — autonomous agent SDLC (context/onboard/preflight), adopt, inventory, board/done/review.",
   "type": "module",
   "bin": {
     "project-ledger": "./bin/project-ledger.js",

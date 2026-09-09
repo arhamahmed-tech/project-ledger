@@ -2,6 +2,23 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.11.0 — 2026-09-09
+
+### Fully autonomous agent startup
+- Cursor `beforeSubmitPrompt` and Claude `SessionStart` hooks auto-run `ledger context` + `ledger onboard` (no user prompt required)
+- AGENTS.md / protocol / always-apply rules: agents **must** self-run context → onboard → preflight before coding
+- Toolkit reminder updated for autonomous flow
+
+### Agent onboarding (from 0.10.2)
+- `ledger onboard` — SDLC phase (`sources_only`, `specification`, `planning`, `implementation`, `active`) + Done / Not started narrative
+- Empty `context` and `adopt` completion point to `onboard`
+
+### Code style enforcement (agent-facing)
+- `docs/conventions/code-style.md` + `structure.md` — naming (camelCase, PascalCase, kebab-case files, etc.)
+- `.project/conventions.yaml` — machine-readable naming; customize per host repo
+- `preflight` prints **CODE STYLE (mandatory)** when `follow_existing_codebase_style: true`
+- `validate` / `doctor` require conventions files
+
 ## 0.10.2 — 2026-09-09
 
 ### Agent onboarding
