@@ -6,8 +6,8 @@ Full protocol: [`docs/agent-protocol.md`](docs/agent-protocol.md)
 
 ## Must follow
 
-1. **New chat / resume work** → `node scripts/ledger.mjs context` **first** (paths to read). If context is empty, run `node scripts/ledger.mjs onboard` for phase + next steps.
-2. **Before coding any task** → `node scripts/ledger.mjs preflight` (must pass). Out of scope / missing deps → STOP and ask. **Match code style:** `docs/conventions/code-style.md` + `.project/conventions.yaml` (camelCase, structure, adjacent files).
+1. **New chat / resume work** → automatically run `node scripts/ledger.mjs context` **first** (read-only paths to load). If context is empty, automatically run `node scripts/ledger.mjs onboard` for phase + next steps (do not wait for user to request this).
+2. **Before coding any task** → automatically run `node scripts/ledger.mjs preflight` (must pass). Out of scope / missing deps → STOP and ask. **Match code style:** `docs/conventions/code-style.md` + `.project/conventions.yaml` (camelCase, structure, adjacent files).
 3. **Find work** → `ledger next` (optionally `--focus`); paste `ledger handoff` into a new chat.
 4. **User product originals** → `docs/product/sources/…`. Never rewrite. `ledger sources`.
 5. **Board / milestones** → `ledger board`; `ledger new ms "Sprint 1"`.

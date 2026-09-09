@@ -44,6 +44,7 @@ node scripts/ledger.mjs sources
 
 ```bash
 node scripts/ledger.mjs context
+node scripts/ledger.mjs onboard         # if context is empty (hooks/agent auto-run this)
 node scripts/ledger.mjs preflight          # or: preflight TASK-0003
 ```
 

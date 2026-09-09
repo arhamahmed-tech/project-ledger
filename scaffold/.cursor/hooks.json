@@ -3,6 +3,12 @@
   "hooks": {
     "beforeSubmitPrompt": [
       {
+        "command": "node scripts/ledger.mjs context"
+      },
+      {
+        "command": "node scripts/ledger.mjs onboard"
+      },
+      {
         "command": "bash .cursor/hooks/toolkit-reminder.sh"
       }
     ],
