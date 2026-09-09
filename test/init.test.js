@@ -32,6 +32,8 @@ test("init scaffolds, vendors CLI, validate + doctor pass", () => {
   assert.ok(fs.existsSync(path.join(dir, ".project/schemas/EPIC.json")));
   assert.ok(fs.existsSync(path.join(dir, ".cursor/skills/find-skills/SKILL.md")), "find-skills Cursor");
   assert.ok(fs.existsSync(path.join(dir, ".claude/skills/find-skills/SKILL.md")), "find-skills Claude");
+  assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/sow/README.md")), "product sources");
+  assert.ok(fs.existsSync(path.join(dir, "docs/product/sources/specs/README.md")));
 
   const local = spawnSync(process.execPath, [path.join(dir, "scripts/ledger.mjs"), "validate"], {
     cwd: dir,
@@ -245,4 +247,17 @@ test("only one alwaysApply Cursor rule after init", () => {
     .filter((n) => /alwaysApply:\s*true/.test(fs.readFileSync(path.join(rulesDir, n), "utf8")));
   assert.equal(always.length, 1, `expected 1 alwaysApply, got ${always.join(",")}`);
   assert.equal(always[0], "project-ledger.mdc");
+});
+
+test("sources lists user originals", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "src"], dir).status, 0);
+  fs.writeFileSync(path.join(dir, "docs/product/sources/sow/client-sow.md"), "# Original SOW\n");
+  fs.writeFileSync(path.join(dir, "docs/product/sources/specs/prd.md"), "# PRD\n");
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const out = spawnSync(process.execPath, [bin, "sources"], { cwd: dir, encoding: "utf8" });
+  assert.equal(out.status, 0, out.stderr || out.stdout);
+  assert.match(out.stdout, /client-sow\.md/);
+  assert.match(out.stdout, /prd\.md/);
+  assert.match(out.stdout, /2 source file/);
 });

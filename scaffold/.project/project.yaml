@@ -10,6 +10,7 @@ source_of_truth:
   requirements: docs/product/requirements
   sow: docs/product/sow
   specifications: docs/product/specs
+  product_sources: docs/product/sources
   decisions: docs/architecture/adr
   epics: docs/plans/epics
   plans: docs/plans

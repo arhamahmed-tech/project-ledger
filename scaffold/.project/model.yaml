@@ -41,6 +41,7 @@ conventions:
   agent_attribution: .agent-trace/
   active_context: .project/context.yaml
   specs: ProductSpec-compatible markdown under docs/product/specs/<SPEC-ID>/v<N>.md
+  product_sources: user-provided originals under docs/product/sources/{sow,specs,briefs,misc}/ — do not rewrite; derive formal SOW/SPEC from them
   decisions: immutable ADRs; supersede via new ADR, never rewrite
   events: append-only JSONL
   tests: .engineering/tests

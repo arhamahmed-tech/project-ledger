@@ -8,11 +8,12 @@ alwaysApply: true
 **This rule must apply every chat.** If you do not see it in Cursor Settings → Rules as “Always Apply”, reload the window.
 
 1. **New chat:** `node scripts/ledger.mjs context` first — read only those paths.
-2. Canonical protocol: `AGENTS.md` + `docs/agent-protocol.md`
-3. Create/switch work: `ledger new …` / `ledger focus TASK-####`
-4. Toolkit order: **skill → find-skills → MCP → hooks → implement**
-5. Match host codebase style; security review for auth/payments/PII/admin/secrets
-6. Before claiming done: `node scripts/ledger.mjs validate`
+2. **User originals:** `docs/product/sources/` — read before formal SOW/SPEC; never rewrite; `ledger sources`
+3. Canonical protocol: `AGENTS.md` + `docs/agent-protocol.md`
+4. Create/switch work: `ledger new …` / `ledger focus TASK-####`
+5. Toolkit order: **skill → find-skills → MCP → hooks → implement**
+6. Match host codebase style; security review for auth/payments/PII/admin/secrets
+7. Before claiming done: `node scripts/ledger.mjs validate`
 
 Never rewrite immutable SOW/SPEC/ADR history. Never skip ledger for non-trivial product work.
 

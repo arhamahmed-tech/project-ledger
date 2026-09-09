@@ -22,10 +22,23 @@ Git is the source of truth for intent and history.
 |-------|------|
 | Constitution | `.project/project.yaml` |
 | Active context | `.project/context.yaml` |
+| **User originals** | `docs/product/sources/{sow,specs,briefs,misc}/` |
+| Formal product docs | `docs/product/` (SOW / REQ / SPEC revisions) |
 | Human docs | `docs/` |
 | Engineering history | `.engineering/` |
 | Audit | `.audit/events.jsonl` |
 | Agent attribution | `.agent-trace/` |
+
+### Product knowledge (user → ledger)
+
+1. User drops full SOW / specs / briefs into **`docs/product/sources/`** (do not overwrite).
+2. Agent runs `node scripts/ledger.mjs sources`, reads those files.
+3. Agent creates formal immutable SOW/SPEC with `ledger new sow|spec` / `ledger revise` — derived from sources, not invented.
+4. Implementation follows formal SPEC@rev only.
+
+```bash
+node scripts/ledger.mjs sources
+```
 
 ### New chat bootstrap (any harness)
 

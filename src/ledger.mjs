@@ -51,6 +51,7 @@ function usage() {
   project-ledger decisions
   project-ledger event <action> <target> [--spec SPEC@rev]
   project-ledger hash <path>
+  project-ledger sources              list user-provided originals
   project-ledger ui [--port 3847]
 
 New chat / any harness — start with:
@@ -81,6 +82,7 @@ function copyDir(src, dest, { force = false } = {}) {
 const LEDGER_MUST_READ = [
   "AGENTS.md",
   "docs/agent-protocol.md",
+  "docs/product/sources/README.md",
   ".project/project.yaml",
   ".project/context.yaml",
   ".cursor/rules/project-ledger.mdc",
@@ -295,6 +297,7 @@ function cmdDoctor() {
   ok("codebase-style", exists(".cursor/rules/codebase-style.mdc") || exists(".claude/rules/codebase-style.md"));
   ok(`scaffold at PKG_ROOT`, fs.existsSync(path.join(PKG_ROOT, "scaffold")), "npm i -D /path/to/project-ledger or LEDGER_PKG_ROOT");
   ok("docs/plans/epics", exists("docs/plans/epics"), "Run: project-ledger init --force");
+  ok("docs/product/sources", exists("docs/product/sources/README.md"), "Run: project-ledger upgrade — user originals folder");
 
   const ignoreIssues = [
     ...collectIgnoreConflicts(".cursorignore"),
@@ -378,6 +381,11 @@ function cmdInit(args) {
     "docs/product/requirements",
     "docs/product/specs",
     "docs/product/sow",
+    "docs/product/sources",
+    "docs/product/sources/sow",
+    "docs/product/sources/specs",
+    "docs/product/sources/briefs",
+    "docs/product/sources/misc",
     "docs/architecture/adr",
     "docs/plans/features",
     "docs/plans/tasks",
@@ -483,6 +491,13 @@ function cmdStatus() {
   console.log("");
   console.log(`Epics              ${c.epics}`);
   console.log(`Requirements       ${c.requirements}`);
+  const srcCount = ["sow", "specs", "briefs", "misc"].reduce((n, sub) => {
+    return (
+      n +
+      listFiles(`docs/product/sources/${sub}`, (name) => name !== "README.md").length
+    );
+  }, 0);
+  console.log(`Product sources    ${srcCount} (user originals under docs/product/sources/)`);
   console.log(`SOW Revisions      ${c.sow_revisions}`);
   console.log(`Specifications     ${c.specifications}`);
   console.log(`Spec Revisions     ${c.spec_revisions}`);
@@ -515,6 +530,11 @@ function cmdValidate() {
     "docs/product/requirements",
     "docs/product/sow",
     "docs/product/specs",
+    "docs/product/sources",
+    "docs/product/sources/sow",
+    "docs/product/sources/specs",
+    "docs/product/sources/briefs",
+    "docs/product/sources/misc",
     "docs/architecture/adr",
     "docs/plans/epics",
     "docs/plans/features",
@@ -650,6 +670,7 @@ function cmdContext() {
   if (!ctx.current_task && !ctx.current_plan && !ctx.current_epic && !ctx.current_spec && !ctx.current_req) {
     console.log("  (empty) — set with: ledger focus <TASK-|PLAN-|EPIC-|SPEC-|REQ- id>");
     console.log("  or:        ledger new task \"...\" --plan PLAN-0001 --focus");
+    console.log("  Product originals: docs/product/sources/ (sow|specs|briefs|misc) — run: ledger sources");
     return;
   }
   const epic = g.epics.find((e) => e.meta.id === ctx.current_epic);
@@ -963,6 +984,7 @@ format: productspec
     appendAgentTrace({ action: "new.spec", target: id, path: indexRel });
     console.log(`created ${indexRel}`);
     console.log(`created ${revRel} (hash ${hash})`);
+    console.log("Reminder: derive from docs/product/sources/specs/ (do not rewrite user originals).");
     if (flags.focus) cmdFocus([`${id}@1`, "--actor", flags.actor]);
     return;
   } else if (kind === "sow") {
@@ -1024,6 +1046,7 @@ specs: []
     appendAgentTrace({ action: "new.sow", target: id, path: indexRel });
     console.log(`created ${indexRel}`);
     console.log(`created ${revRel} (hash ${hash})`);
+    console.log("Reminder: derive from docs/product/sources/sow/ (do not rewrite user originals).");
     return;
   } else if (kind === "plan") {
     id = nextId("PLAN", g.plans);
@@ -1440,13 +1463,18 @@ function cmdUpgrade() {
     process.exit(1);
   }
   const n = copyDir(scaffold, ROOT, { force: false });
-  for (const d of ["docs/plans/epics", ".cursor/skills", ".claude/skills", ".github/workflows"]) {
+  for (const d of ["docs/plans/epics", "docs/product/sources", "docs/product/sources/sow", "docs/product/sources/specs", "docs/product/sources/briefs", "docs/product/sources/misc", ".cursor/skills", ".claude/skills", ".github/workflows"]) {
     fs.mkdirSync(abs(d), { recursive: true });
   }
   // refresh always-overwrite critical agent policy + CLI
   for (const rel of [
     "AGENTS.md",
     "docs/agent-protocol.md",
+    "docs/product/sources/README.md",
+    "docs/product/sources/sow/README.md",
+    "docs/product/sources/specs/README.md",
+    "docs/product/sources/briefs/README.md",
+    "docs/product/sources/misc/README.md",
     ".cursor/rules/project-ledger.mdc",
     ".cursor/rules/agent-toolkit.mdc",
     ".cursor/rules/codebase-style.mdc",
@@ -1560,6 +1588,26 @@ function cmdTrace(args) {
     current_epic: ctx.current_epic,
   });
   console.log("appended .agent-trace/traces.jsonl");
+}
+
+function cmdSources() {
+  console.log("PRODUCT SOURCES (user-provided originals)\n");
+  console.log("Path: docs/product/sources/{sow,specs,briefs,misc}/");
+  console.log("Rule: do not rewrite these — derive formal SOW/SPEC with ledger new/revise.\n");
+  let total = 0;
+  for (const sub of ["sow", "specs", "briefs", "misc"]) {
+    const dir = `docs/product/sources/${sub}`;
+    if (!exists(dir)) {
+      console.log(`${sub}/  (missing — run: project-ledger upgrade)`);
+      continue;
+    }
+    const files = listFiles(dir, (name) => name !== "README.md");
+    console.log(`${sub}/  (${files.length})`);
+    for (const f of files) console.log(`  - ${f}`);
+    if (!files.length) console.log("  (empty — drop originals here)");
+    total += files.length;
+  }
+  console.log(`\n${total} source file(s). Formal ledger SOW/SPEC stay the implementation source of truth.`);
 }
 
 function cmdHistory(id) {
@@ -2093,6 +2141,9 @@ switch (cmd) {
     break;
   case "hash":
     cmdHash(argv[0]);
+    break;
+  case "sources":
+    cmdSources();
     break;
   case "ui":
     cmdUi(argv);

@@ -2,6 +2,14 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.9.2 — 2026-09-09
+
+### User product sources
+- Added `docs/product/sources/{sow,specs,briefs,misc}/` for **user-provided** originals (full SOW/spec knowledge)
+- Agents must read sources before formal `ledger new sow|spec`; must **not** rewrite originals
+- New command: `ledger sources`
+- Wired into AGENTS.md, agent-protocol, Cursor rule, validate/doctor/status/upgrade
+
 ## 0.9.1 — 2026-09-09
 
 ### Cursor ignore / rules loading
