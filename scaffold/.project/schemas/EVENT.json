@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/EVENT.json",
+  "title": "EVENT",
+  "type": "object",
+  "required": ["id", "timestamp", "actor", "action", "target"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^EVT-[0-9]+$" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "actor": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "type": "string", "enum": ["human", "agent", "system"] },
+        "id": { "type": "string" }
+      }
+    },
+    "action": { "type": "string" },
+    "target": { "type": "string" },
+    "revision": { "type": "integer" },
+    "spec": { "type": "string" },
+    "meta": { "type": "object" }
+  },
+  "additionalProperties": true
+}

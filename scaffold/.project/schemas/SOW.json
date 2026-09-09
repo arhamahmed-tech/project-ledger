@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/SOW.json",
+  "title": "SOW",
+  "type": "object",
+  "required": ["id", "title", "current_revision", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^SOW-[0-9]+$" },
+    "title": { "type": "string" },
+    "current_revision": { "type": "integer", "minimum": 1 },
+    "status": { "type": "string", "enum": ["draft", "active", "accepted", "superseded", "retired"] },
+    "format": { "type": "string", "const": "sow" },
+    "specs": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

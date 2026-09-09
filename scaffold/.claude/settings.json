@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx skills *)",
+      "Bash(npx project-ledger *)",
+      "Bash(project-ledger *)",
+      "Bash(pnpm ledger *)",
+      "Bash(npm exec project-ledger *)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.project/harness/toolkit-reminder.sh\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.project/harness/validate-on-stop.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

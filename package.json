@@ -1,0 +1,39 @@
+{
+  "name": "project-ledger",
+  "version": "0.4.0",
+  "description": "Git-native Project Ledger — harness-agnostic (Cursor, Claude Code, Copilot, Codex). Intent, ADRs, agent runs, audit, CLI, skills/MCP/hooks, security review, host codebase style.",
+  "type": "module",
+  "bin": {
+    "project-ledger": "./bin/project-ledger.js",
+    "ledger": "./bin/project-ledger.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "scaffold",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "ledger": "node bin/project-ledger.js",
+    "test": "node bin/project-ledger.js --help; node --test test/*.test.js"
+  },
+  "keywords": [
+    "project-ledger",
+    "productspec",
+    "adr",
+    "agent-trace",
+    "cursor",
+    "claude-code",
+    "audit",
+    "sdlc"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  }
+}

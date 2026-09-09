@@ -1,0 +1,13 @@
+---
+description: Project Ledger — follow docs/agent-protocol.md (all harnesses)
+alwaysApply: true
+---
+
+# Project Ledger
+
+Canonical protocol: **`docs/agent-protocol.md`** and **`AGENTS.md`**.
+
+Before non-trivial implementation: requirement → current SPEC revision → ADRs → plan → agent run → evidence.
+Never rewrite immutable SOW/SPEC/ADR history. Run `npx project-ledger validate` (or `pnpm ledger validate`) before claiming ledger completion.
+
+This rule is the Cursor adapter — Claude Code uses `CLAUDE.md` / `.claude/rules/`; all harnesses share the same protocol file.

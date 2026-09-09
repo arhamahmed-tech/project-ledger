@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/CHANGE.json",
+  "title": "CHANGE",
+  "type": "object",
+  "required": ["id", "agent_run", "files"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^CHG-[0-9]+$" },
+    "agent_run": { "type": "string", "pattern": "^RUN-[0-9]+$" },
+    "files": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "commits": { "type": "array", "items": { "type": "string" } },
+    "summary": { "type": "string" }
+  },
+  "additionalProperties": true
+}

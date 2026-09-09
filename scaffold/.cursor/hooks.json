@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "bash .cursor/hooks/toolkit-reminder.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash .cursor/hooks/stop-toolkit-check.sh",
+        "loop_limit": 1
+      }
+    ]
+  }
+}

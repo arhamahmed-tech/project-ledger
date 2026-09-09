@@ -1,0 +1,11 @@
+---
+description: Security and code review for sensitive changes
+alwaysApply: true
+---
+
+# Security & code review
+
+See `docs/agent-protocol.md` § Security.
+
+Required for auth, payments, PII, admin, uploads, webhooks, secrets, risky deps.
+Prefer `/review-security` or `/review-bugbot` when available. Record `EVD-*` review evidence for ledger work.

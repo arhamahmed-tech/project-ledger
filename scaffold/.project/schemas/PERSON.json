@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/PERSON.json",
+  "title": "PERSON",
+  "type": "object",
+  "required": ["id", "type", "name"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^(USER|AGENT)-[A-Z0-9]+$" },
+    "type": { "type": "string", "enum": ["human", "agent"] },
+    "name": { "type": "string" },
+    "role": { "type": "string" },
+    "email": { "type": ["string", "null"] },
+    "provider": { "type": "string" }
+  },
+  "additionalProperties": true
+}

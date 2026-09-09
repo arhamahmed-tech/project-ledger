@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/PLAN.json",
+  "title": "PLAN",
+  "type": "object",
+  "required": ["id", "title", "status", "spec"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
+    "title": { "type": "string" },
+    "status": { "type": "string", "enum": ["draft", "approved", "in_progress", "done", "cancelled"] },
+    "spec": { "type": "string", "pattern": "^SPEC-[0-9]+@[0-9]+$" },
+    "decisions": { "type": "array", "items": { "type": "string", "pattern": "^ADR-[0-9]+$" } },
+    "tasks": { "type": "array", "items": { "type": "string", "pattern": "^TASK-[0-9]+$" } }
+  },
+  "additionalProperties": true
+}

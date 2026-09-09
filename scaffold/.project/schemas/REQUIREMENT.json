@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/REQUIREMENT.json",
+  "title": "REQUIREMENT",
+  "type": "object",
+  "required": ["id", "title", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^REQ-[0-9]+$" },
+    "title": { "type": "string" },
+    "status": { "type": "string", "enum": ["draft", "active", "deprecated", "done"] },
+    "priority": { "type": "string", "enum": ["p0", "p1", "p2", "p3"] },
+    "specs": { "type": "array", "items": { "type": "string", "pattern": "^SPEC-[0-9]+$" } },
+    "changed_by": { "type": "string" },
+    "change_count": { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": true
+}

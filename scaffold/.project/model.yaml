@@ -1,0 +1,47 @@
+# Project Ledger data model (V0.3)
+entities:
+  - PROJECT
+  - PERSON
+  - REQUIREMENT
+  - SOW
+  - SOW_REVISION
+  - SPEC
+  - SPEC_REVISION
+  - DECISION
+  - PLAN
+  - TASK
+  - AGENT_RUN
+  - CHANGE
+  - EVIDENCE
+  - TEST
+  - RELEASE
+  - EVENT
+
+chain:
+  - SOW
+  - SOW_REVISION
+  - REQUIREMENT
+  - SPEC
+  - SPEC_REVISION
+  - DECISION
+  - PLAN
+  - TASK
+  - AGENT_RUN
+  - CHANGE
+  - COMMIT_OR_PR
+  - EVIDENCE
+  - RELEASE
+
+conventions:
+  human_readable: docs/
+  machine_history: .engineering/
+  audit: .audit/events.jsonl
+  agent_attribution: .agent-trace/
+  specs: ProductSpec-compatible markdown under docs/product/specs/<SPEC-ID>/v<N>.md
+  decisions: immutable ADRs; supersede via new ADR, never rewrite
+  events: append-only JSONL
+  tests: .engineering/tests
+  releases: .engineering/releases
+  templates: .project/templates
+  security: agents must run security/code review on sensitive changes
+  style: agents must match the host project's existing codebase conventions

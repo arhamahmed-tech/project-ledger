@@ -1,0 +1,12 @@
+---
+description: Skills, MCP, hooks — see docs/agent-protocol.md
+alwaysApply: true
+---
+
+# Agent toolkit
+
+Follow `docs/agent-protocol.md` decision order:
+
+**skill → /find-skills → MCP → hooks → implement**
+
+Works the same in Cursor, Claude Code, and other harnesses via `AGENTS.md`.

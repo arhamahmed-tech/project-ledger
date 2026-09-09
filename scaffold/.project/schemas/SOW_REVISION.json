@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/SOW_REVISION.json",
+  "title": "SOW_REVISION",
+  "type": "object",
+  "required": ["id", "sow_revision", "immutable", "path"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^SOW-[0-9]+$" },
+    "sow_revision": { "type": "integer", "minimum": 1 },
+    "content_hash": { "type": "string" },
+    "path": { "type": "string" },
+    "immutable": { "type": "boolean", "const": true },
+    "supersedes_revision": { "type": "integer" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by": { "type": "string" }
+  },
+  "additionalProperties": true
+}

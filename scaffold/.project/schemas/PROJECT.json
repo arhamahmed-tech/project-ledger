@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/PROJECT.json",
+  "title": "PROJECT",
+  "type": "object",
+  "required": ["id", "name", "version"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^PROJECT-[0-9]+$" },
+    "name": { "type": "string" },
+    "version": { "type": "string" },
+    "ledger_version": { "type": "string" }
+  },
+  "additionalProperties": true
+}

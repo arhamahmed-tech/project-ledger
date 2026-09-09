@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/SPEC.json",
+  "title": "SPEC",
+  "type": "object",
+  "required": ["id", "title", "current_revision", "requirement"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^SPEC-[0-9]+$" },
+    "title": { "type": "string" },
+    "requirement": { "type": "string", "pattern": "^REQ-[0-9]+$" },
+    "current_revision": { "type": "integer", "minimum": 1 },
+    "status": { "type": "string", "enum": ["draft", "approved", "superseded", "retired"] },
+    "format": { "type": "string", "const": "productspec" },
+    "path": { "type": "string" }
+  },
+  "additionalProperties": true
+}

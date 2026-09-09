@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/RELEASE.json",
+  "title": "RELEASE",
+  "type": "object",
+  "required": ["id", "version", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^REL-[0-9]+$" },
+    "version": { "type": "string" },
+    "status": { "type": "string", "enum": ["planned", "released", "yanked"] },
+    "evidence": { "type": "array", "items": { "type": "string", "pattern": "^EVD-[0-9]+$" } },
+    "changes": { "type": "array", "items": { "type": "string", "pattern": "^CHG-[0-9]+$" } },
+    "released_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": true
+}

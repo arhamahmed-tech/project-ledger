@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/EVIDENCE.json",
+  "title": "EVIDENCE",
+  "type": "object",
+  "required": ["id", "kind", "agent_run", "path"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^EVD-[0-9]+$" },
+    "kind": { "type": "string", "enum": ["test", "review", "deploy", "manual", "other"] },
+    "agent_run": { "type": "string", "pattern": "^RUN-[0-9]+$" },
+    "path": { "type": "string" },
+    "result": { "type": "string", "enum": ["pass", "fail", "n/a"] },
+    "recorded_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}

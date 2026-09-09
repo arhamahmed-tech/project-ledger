@@ -1,0 +1,50 @@
+project:
+  id: PROJECT-001
+  name: my-project
+  version: 0.1.0
+  ledger_version: "0.3"
+
+source_of_truth:
+  repository: git
+  documentation: repository
+  requirements: docs/product/requirements
+  sow: docs/product/sow
+  specifications: docs/product/specs
+  decisions: docs/architecture/adr
+  plans: docs/plans
+  agent_runs: .engineering/agent-runs
+  evidence: .engineering/evidence
+  tests: .engineering/tests
+  releases: .engineering/releases
+  audit_log: .audit/events.jsonl
+  agent_trace: .agent-trace/traces.jsonl
+  schemas: .project/schemas
+  templates: .project/templates
+
+rules:
+  implementation_requires_spec: true
+  implementation_requires_plan: true
+  implementation_requires_approval: true
+  decisions_are_immutable: true
+  spec_revisions_are_immutable: true
+  agent_runs_required: true
+  tests_required: true
+  evidence_required: true
+  security_review_for_sensitive_changes: true
+  follow_existing_codebase_style: true
+
+id_prefixes:
+  PROJECT: PROJECT
+  PERSON: USER
+  REQUIREMENT: REQ
+  SOW: SOW
+  SPEC: SPEC
+  DECISION: ADR
+  PLAN: PLAN
+  TASK: TASK
+  AGENT_RUN: RUN
+  CHANGE: CHG
+  EVIDENCE: EVD
+  TEST: TEST
+  RELEASE: REL
+  EVENT: EVT

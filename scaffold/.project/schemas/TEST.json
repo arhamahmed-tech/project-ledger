@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/TEST.json",
+  "title": "TEST",
+  "type": "object",
+  "required": ["id", "path", "related"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^TEST-[0-9]+$" },
+    "path": { "type": "string" },
+    "related": {
+      "type": "object",
+      "properties": {
+        "requirements": { "type": "array", "items": { "type": "string" } },
+        "specs": { "type": "array", "items": { "type": "string" } },
+        "agent_runs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/DECISION.json",
+  "title": "DECISION",
+  "type": "object",
+  "required": ["id", "title", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^ADR-[0-9]+$" },
+    "title": { "type": "string" },
+    "status": { "type": "string", "enum": ["proposed", "accepted", "superseded", "deprecated"] },
+    "specs": { "type": "array", "items": { "type": "string" } },
+    "supersedes": { "type": ["string", "null"], "pattern": "^ADR-[0-9]+$" },
+    "superseded_by": { "type": ["string", "null"], "pattern": "^ADR-[0-9]+$" },
+    "immutable": { "type": "boolean", "const": true }
+  },
+  "additionalProperties": true
+}

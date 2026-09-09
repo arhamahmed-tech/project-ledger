@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/SPEC_REVISION.json",
+  "title": "SPEC_REVISION",
+  "type": "object",
+  "required": ["spec_id", "spec_revision", "content_hash", "path"],
+  "properties": {
+    "spec_id": { "type": "string", "pattern": "^SPEC-[0-9]+$" },
+    "spec_revision": { "type": "integer", "minimum": 1 },
+    "content_hash": { "type": "string" },
+    "path": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by": { "type": "string" },
+    "immutable": { "type": "boolean", "const": true }
+  },
+  "additionalProperties": true
+}

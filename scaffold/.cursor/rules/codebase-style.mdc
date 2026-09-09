@@ -1,0 +1,11 @@
+---
+description: Match the host project's existing codebase style
+alwaysApply: true
+---
+
+# Codebase style
+
+See `docs/agent-protocol.md` § Codebase style.
+
+Read adjacent files first. Match naming, folders, validation, tests, imports.
+Do not introduce new frameworks or conventions unless asked or an ADR requires it.

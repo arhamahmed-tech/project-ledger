@@ -1,0 +1,12 @@
+people:
+  - id: USER-001
+    type: human
+    name: Replace Me
+    role: engineer
+    email: null
+
+  - id: AGENT-CURSOR
+    type: agent
+    name: Cursor
+    role: coding-agent
+    provider: cursor

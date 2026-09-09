@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/AGENT_RUN.json",
+  "title": "AGENT_RUN",
+  "type": "object",
+  "required": ["id", "status", "agent", "spec", "task"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^RUN-[0-9]+$" },
+    "status": { "type": "string", "enum": ["started", "completed", "failed", "reconciled"] },
+    "agent": { "type": "string" },
+    "spec": { "type": "string", "pattern": "^SPEC-[0-9]+@[0-9]+$" },
+    "plan": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
+    "task": { "type": "string", "pattern": "^TASK-[0-9]+$" },
+    "commits": { "type": "array", "items": { "type": "string" } },
+    "prs": { "type": "array", "items": { "type": "string" } },
+    "evidence": { "type": "array", "items": { "type": "string", "pattern": "^EVD-[0-9]+$" } },
+    "agent_trace_ref": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "completed_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "additionalProperties": true
+}
