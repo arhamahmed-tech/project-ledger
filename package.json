@@ -1,6 +1,6 @@
 {
   "name": "project-ledger",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Git-native Project Ledger — harness-agnostic (Cursor, Claude Code, Copilot, Codex). Offline-friendly init vendors scripts/ledger.mjs so hooks never need npm registry.",
   "type": "module",
   "bin": {
