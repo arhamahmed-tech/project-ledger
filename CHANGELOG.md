@@ -2,6 +2,30 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.10.0 — 2026-09-09
+
+### Agent UX
+- `ledger next [--focus]` — next ready task (deps satisfied)
+- `ledger handoff` — paste block for a new chat
+- `ledger note <text>` — append note to focused task + context
+
+### Delivery
+- Milestone entity `MS-*` under `docs/plans/milestones/`
+- `ledger new ms "Sprint 1"`; task/release can link `--ms` / `--release`
+- `ledger board` — milestones / epics / plans / tasks / releases
+
+### Quality
+- `ledger done TASK-####` — enforces `agent_runs` / evidence / tests rules from `project.yaml`
+- `ledger review` — validate + check + preflight before PR
+
+## 0.9.3 — 2026-09-09
+
+### Preflight before coding
+- New command: `ledger preflight [TASK-id]` — fail-closed gate for SPEC pin, out-of-scope printout, `depends_on`, blocked/cancelled, stale pins, unresolved ADRs
+- TASK template/schema: `depends_on`, `blocks`, `out_of_scope_risk` + checklist
+- AGENTS.md / agent-protocol / Cursor rule / hooks reminder require preflight before coding
+- Edge cases: out-of-scope prompts and missing deps → stop and ask the user
+
 ## 0.9.2 — 2026-09-09
 
 ### User product sources

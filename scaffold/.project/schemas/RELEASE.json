@@ -7,7 +7,10 @@
   "properties": {
     "id": { "type": "string", "pattern": "^REL-[0-9]+$" },
     "version": { "type": "string" },
+    "title": { "type": "string" },
     "status": { "type": "string", "enum": ["planned", "released", "yanked"] },
+    "milestone": { "type": ["string", "null"], "pattern": "^MS-[0-9]+$" },
+    "tasks": { "type": "array", "items": { "type": "string", "pattern": "^TASK-[0-9]+$" } },
     "evidence": { "type": "array", "items": { "type": "string", "pattern": "^EVD-[0-9]+$" } },
     "changes": { "type": "array", "items": { "type": "string", "pattern": "^CHG-[0-9]+$" } },
     "released_at": { "type": ["string", "null"], "format": "date-time" }

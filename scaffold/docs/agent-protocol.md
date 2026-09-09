@@ -40,14 +40,30 @@ Git is the source of truth for intent and history.
 node scripts/ledger.mjs sources
 ```
 
-### New chat bootstrap (any harness)
+### Before coding a task (mandatory)
 
 ```bash
 node scripts/ledger.mjs context
-# or: npx project-ledger context
+node scripts/ledger.mjs preflight          # or: preflight TASK-0003
 ```
 
-That prints the focused epic/plan/task/spec and **only the files to read**. Do not walk all of `docs/plans/tasks/`.
+`preflight` fails closed when:
+
+| Check | Fail meaning |
+|-------|----------------|
+| No / missing SPEC@rev | Cannot implement without a pinned spec |
+| SPEC revision missing | Pin is broken |
+| Task `blocked` / `cancelled` | Do not code |
+| `depends_on` not ready | Unfinished TASK / proposed ADR / missing entity |
+| Stale SPEC pin | Warn — re-read current revision |
+
+It also prints **In scope / Out of scope** from the SPEC. Edge cases:
+
+- User asks for something **out of scope** → STOP, confirm with user (do not silently expand).
+- Work **depends on** another task/system not listed → add `depends_on` or create a blocker task first.
+- Spec pin behind `current_revision` → re-read current SPEC before coding.
+
+Task frontmatter supports: `depends_on: []`, `blocks: []`, `out_of_scope_risk:`.
 
 Set or switch focus:
 

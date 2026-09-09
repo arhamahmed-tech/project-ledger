@@ -6,15 +6,15 @@ Full protocol: [`docs/agent-protocol.md`](docs/agent-protocol.md)
 
 ## Must follow
 
-1. **New chat / resume work** → run `node scripts/ledger.mjs context` (or `npx project-ledger context`) **first**. Use only the paths it prints; do not rescan every task file.
-2. **User product originals** → live in `docs/product/sources/{sow,specs,briefs,misc}/`. Read them before creating formal SOW/SPEC. **Never rewrite** those originals; derive with `ledger new sow|spec`. List with `ledger sources`.
-3. **Start / switch work** → `ledger focus TASK-####` (or EPIC/PLAN/SPEC/REQ). Persist notes with `--notes "..."`.
-4. **Create entities** → `ledger new epic|req|sow|spec|plan|task|adr|run|chg|evd "title" …` (not hand-copied templates when avoidable).
-5. **Skills** first → read project `.cursor/skills/` / `.claude/skills/` (includes **find-skills**) → **`/find-skills`** or `npx skills find` if unsure
-6. **MCP** for live external systems (inspect schemas; auth when needed)
-7. **Hooks** when present (Cursor and/or Claude)
-8. **Security / code review** on sensitive changes
-9. **Match this repo’s existing code style**
-10. **Project Ledger** — `node scripts/ledger.mjs validate` before claiming ledger work done
+1. **New chat / resume work** → run `node scripts/ledger.mjs context` **first**. Use only the paths it prints.
+2. **Before coding any task** → `node scripts/ledger.mjs preflight` (must pass). Out of scope / missing deps → STOP and ask.
+3. **Find work** → `ledger next` (optionally `--focus`); paste `ledger handoff` into a new chat.
+4. **User product originals** → `docs/product/sources/…`. Never rewrite. `ledger sources`.
+5. **Board / milestones** → `ledger board`; `ledger new ms "Sprint 1"`.
+6. **Notes** → `ledger note "..."` on the focused task.
+7. **Finish** → `ledger done TASK-####` (enforces runs/evidence/tests rules) then `ledger review` before PR.
+8. **Create entities** → `ledger new …`
+9. **Skills / MCP / hooks / security / style** as in `docs/agent-protocol.md`
+10. **Validate** before claiming done
 
 Do not invent a parallel process. Read `docs/agent-protocol.md`.

@@ -1,8 +1,9 @@
-# Project Ledger data model (V0.4)
+# Project Ledger data model (V0.5)
 entities:
   - PROJECT
   - PERSON
   - EPIC
+  - MILESTONE
   - REQUIREMENT
   - SOW
   - SOW_REVISION
@@ -20,6 +21,7 @@ entities:
 
 chain:
   - EPIC
+  - MILESTONE
   - SOW
   - SOW_REVISION
   - REQUIREMENT
@@ -42,6 +44,7 @@ conventions:
   active_context: .project/context.yaml
   specs: ProductSpec-compatible markdown under docs/product/specs/<SPEC-ID>/v<N>.md
   product_sources: user-provided originals under docs/product/sources/{sow,specs,briefs,misc}/ — do not rewrite; derive formal SOW/SPEC from them
+  milestones: docs/plans/milestones/MS-*.md
   decisions: immutable ADRs; supersede via new ADR, never rewrite
   events: append-only JSONL
   tests: .engineering/tests
@@ -49,3 +52,4 @@ conventions:
   templates: .project/templates
   security: agents must run security/code review on sensitive changes
   style: agents must match the host project's existing codebase conventions
+  preflight: run ledger preflight before coding; ledger done enforces runs/evidence/tests rules

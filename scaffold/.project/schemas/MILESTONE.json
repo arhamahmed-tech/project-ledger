@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "project-ledger://schemas/MILESTONE.json",
+  "title": "MILESTONE",
+  "type": "object",
+  "required": ["id", "title", "status"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^MS-[0-9]+$" },
+    "title": { "type": "string" },
+    "status": { "type": "string", "enum": ["planned", "active", "done", "cancelled"] },
+    "epic": { "type": ["string", "null"], "pattern": "^EPIC-[0-9]+$" },
+    "target_date": { "type": ["string", "null"] },
+    "tasks": { "type": "array", "items": { "type": "string", "pattern": "^TASK-[0-9]+$" } },
+    "plans": { "type": "array", "items": { "type": "string", "pattern": "^PLAN-[0-9]+$" } },
+    "release": { "type": ["string", "null"], "pattern": "^REL-[0-9]+$" }
+  },
+  "additionalProperties": true
+}

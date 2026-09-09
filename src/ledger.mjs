@@ -7,6 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { ROOT, PORT, PKG_ROOT, abs, read, write, exists, append, listFiles } from "./lib/paths.mjs";
 import {
   parseFrontmatter,
@@ -29,33 +30,20 @@ function usage() {
   console.log(`Project Ledger
 
   project-ledger init [--name my-app] [--force]
-  project-ledger upgrade          refresh missing scaffold + vendor CLI
-  project-ledger doctor
-  project-ledger status
-  project-ledger validate
-  project-ledger check            git diff vs TASK files (CI / pre-commit)
-  project-ledger context
-  project-ledger focus <EPIC-|PLAN-|TASK-|SPEC-|REQ- id> [--notes "..."] [--actor TYPE:ID]
-  project-ledger focus --clear
-  project-ledger new <epic|req|spec|sow|plan|task|adr|run|chg|evd|test|rel> <title> [flags]
-      flags: --epic ID --plan ID --spec SPEC@rev --req REQ-ID --status S --focus
-  project-ledger revise <SPEC-|SOW- id>   new immutable revision + content_hash
-  project-ledger hooks install            install .git/hooks/pre-commit
-  project-ledger trace <note>             append .agent-trace/traces.jsonl
-  project-ledger history <id>
-  project-ledger why <path>
-  project-ledger who <path>
-  project-ledger drift
-  project-ledger impact <EPIC-|ADR-|REQ-|SPEC-|SOW- id>
-  project-ledger timeline [n]
-  project-ledger decisions
-  project-ledger event <action> <target> [--spec SPEC@rev]
-  project-ledger hash <path>
-  project-ledger sources              list user-provided originals
-  project-ledger ui [--port 3847]
+  project-ledger upgrade
+  project-ledger doctor | status | validate | check | sources | board
+  project-ledger context | preflight [TASK] | next [--focus] | handoff
+  project-ledger focus <id> | focus --clear
+  project-ledger note <text>          append note to focused task
+  project-ledger done <TASK-id>       mark done if quality rules pass
+  project-ledger review               validate+check+preflight gate before PR
+  project-ledger new <epic|ms|req|spec|sow|plan|task|adr|run|chg|evd|test|rel> <title>
+      flags: --epic --plan --spec --req --ms|--milestone --release --status --focus
+  project-ledger revise <SPEC-|SOW- id>
+  project-ledger hooks install | trace <note> | history | why | who | drift | impact | timeline | decisions | event | hash | ui
 
-New chat / any harness — start with:
-  node scripts/ledger.mjs context
+New chat:  node scripts/ledger.mjs context && node scripts/ledger.mjs preflight
+Handoff:   node scripts/ledger.mjs handoff
 `);
 }
 
@@ -390,6 +378,7 @@ function cmdInit(args) {
     "docs/plans/features",
     "docs/plans/tasks",
     "docs/plans/epics",
+    "docs/plans/milestones",
     "docs/decisions",
     "docs/conventions",
     ".engineering/agent-runs",
@@ -411,7 +400,7 @@ function cmdInit(args) {
   ]) {
     fs.mkdirSync(abs(d), { recursive: true });
     const keep = path.join(abs(d), "README.md");
-    if (!fs.existsSync(keep) && !d.startsWith(".audit") && !d.includes("schemas") && !d.includes("templates") && !d.includes("hooks") && !d.includes("rules")) {
+    if (!fs.existsSync(keep) && !d.startsWith(".audit") && !d.includes("schemas") && !d.includes("templates") && !d.includes("hooks") && !d.includes("rules") && !d.includes("skills")) {
       fs.writeFileSync(
         keep,
         `# ${path.basename(d)}\n\nPlace Project Ledger artifacts here. See \`.project/templates/\`.\n`,
@@ -490,6 +479,7 @@ function cmdStatus() {
   if (ctx.notes) console.log(`  notes  ${ctx.notes}`);
   console.log("");
   console.log(`Epics              ${c.epics}`);
+  console.log(`Milestones         ${c.milestones || 0}`);
   console.log(`Requirements       ${c.requirements}`);
   const srcCount = ["sow", "specs", "briefs", "misc"].reduce((n, sub) => {
     return (
@@ -537,6 +527,7 @@ function cmdValidate() {
     "docs/product/sources/misc",
     "docs/architecture/adr",
     "docs/plans/epics",
+    "docs/plans/milestones",
     "docs/plans/features",
     "docs/plans/tasks",
     ".engineering/agent-runs",
@@ -557,6 +548,7 @@ function cmdValidate() {
     "PROJECT",
     "PERSON",
     "EPIC",
+    "MILESTONE",
     "REQUIREMENT",
     "SOW",
     "SOW_REVISION",
@@ -709,6 +701,203 @@ function cmdContext() {
   if (ctx.notes) console.log(`NOTES\n  ${ctx.notes}\n`);
   if (ctx.updated_at) console.log(`updated ${ctx.updated_at} by ${ctx.updated_by || "?"}`);
   console.log("\nRead only the paths above — do not rescan all task files.");
+  if (ctx.current_task) {
+    console.log("Before coding: node scripts/ledger.mjs preflight");
+  }
+}
+
+function extractOutOfScope(body) {
+  if (!body) return "";
+  const m = body.match(/##\s*Out of scope\b[\s\S]*?(?=\n##\s|\n#\s|$)/i)
+    || body.match(/###\s*Out of scope\b[\s\S]*?(?=\n##\s|\n###\s|\n#\s|$)/i);
+  return (m ? m[0] : "").trim();
+}
+
+function extractInScope(body) {
+  if (!body) return "";
+  const m = body.match(/###\s*In scope\b[\s\S]*?(?=\n###\s|\n##\s|\n#\s|$)/i)
+    || body.match(/##\s*Scope\b[\s\S]*?(?=\n##\s|\n#\s|$)/i);
+  return (m ? m[0] : "").trim();
+}
+
+function resolveDepEntity(g, depId) {
+  const base = String(depId).replace(/@\d+$/, "");
+  if (base.startsWith("TASK-")) return { kind: "task", ent: g.tasks.find((t) => t.meta.id === base) };
+  if (base.startsWith("PLAN-")) return { kind: "plan", ent: g.plans.find((p) => p.meta.id === base) };
+  if (base.startsWith("SPEC-")) return { kind: "spec", ent: g.specs.find((s) => s.meta.id === base) };
+  if (base.startsWith("REQ-")) return { kind: "req", ent: g.requirements.find((r) => r.meta.id === base) };
+  if (base.startsWith("ADR-")) return { kind: "adr", ent: g.decisions.find((d) => d.meta.id === base) };
+  if (base.startsWith("EPIC-")) return { kind: "epic", ent: g.epics.find((e) => e.meta.id === base) };
+  if (base.startsWith("MS-")) return { kind: "milestone", ent: (g.milestones || []).find((m) => m.meta.id === base) };
+  return { kind: "unknown", ent: null };
+}
+
+function cmdPreflight(taskIdArg) {
+  const g = graph();
+  const ctx = g.context;
+  const taskId = taskIdArg || ctx.current_task;
+  console.log("PREFLIGHT — before coding\n");
+  if (!taskId) {
+    console.error("FAIL  no task — run: ledger focus TASK-####   or: ledger preflight TASK-####");
+    process.exit(1);
+  }
+
+  const errors = [];
+  const warns = [];
+  const checks = [];
+
+  const task = g.tasks.find((t) => t.meta.id === taskId);
+  if (!task) {
+    console.error(`FAIL  unknown ${taskId}`);
+    process.exit(1);
+  }
+  checks.push(`task ${task.meta.id} — ${task.meta.title || ""} [${task.meta.status}]`);
+
+  if (task.meta.status === "blocked") {
+    errors.push("TASK_BLOCKED: status is blocked — unblock or pick another task");
+  }
+  if (task.meta.status === "cancelled") {
+    errors.push("TASK_CANCELLED: do not implement a cancelled task");
+  }
+  if (task.meta.status === "done") {
+    warns.push("TASK_DONE: task already done — confirm this is a follow-up before editing");
+  }
+
+  const planId = task.meta.plan;
+  if (!planId) {
+    errors.push("NO_PLAN: task has no plan — link a PLAN before coding");
+  }
+  const plan = g.plans.find((p) => p.meta.id === planId);
+  if (planId && !plan) {
+    errors.push(`PLAN_MISSING: ${planId} not found`);
+  } else if (plan) {
+    checks.push(`plan ${plan.meta.id} — ${plan.meta.title || ""} [${plan.meta.status}]`);
+  }
+
+  const rules = g.rules || {};
+  const specRef = plan?.meta?.spec || ctx.current_spec;
+  if (rules.implementation_requires_spec !== false) {
+    if (!specRef || !String(specRef).includes("@")) {
+      errors.push("NO_SPEC_PIN: plan/task has no SPEC@rev — set plan.spec before coding");
+    } else {
+      const [sid, revS] = String(specRef).split("@");
+      const rev = Number(revS);
+      const spec = g.specs.find((s) => s.meta.id === sid);
+      if (!spec) {
+        errors.push(`SPEC_MISSING: ${sid} not found — check docs/product/specs/ and sources/specs/`);
+      } else {
+        checks.push(`spec ${sid}@${rev} (current ${spec.meta.current_revision}) — ${spec.meta.title || ""}`);
+        const revPath = path.join(path.dirname(spec.path), `v${rev}.md`);
+        const currentPath = path.join(path.dirname(spec.path), `v${spec.meta.current_revision}.md`);
+        if (!exists(revPath)) {
+          errors.push(`SPEC_REV_MISSING: ${revPath}`);
+        } else {
+          checks.push(`spec body: ${revPath}`);
+          const { body } = parseFrontmatter(read(revPath));
+          const out = extractOutOfScope(body);
+          const inn = extractInScope(body);
+          if (!out && !/out of scope/i.test(body)) {
+            warns.push("SCOPE_SECTION_MISSING: SPEC has no Out of scope section — ask user before expanding scope");
+          } else if (out) {
+            console.log("OUT OF SCOPE (from SPEC — do not implement these)\n");
+            console.log(out.split("\n").map((l) => `  ${l}`).join("\n"));
+            console.log("");
+          }
+          if (inn) {
+            console.log("IN SCOPE (from SPEC)\n");
+            console.log(inn.split("\n").slice(0, 40).map((l) => `  ${l}`).join("\n"));
+            if (inn.split("\n").length > 40) console.log("  …");
+            console.log("");
+          }
+          console.log("EDGE CASE: If the user prompt asks for something in Out of scope → STOP and confirm with the user.");
+          console.log("EDGE CASE: If it depends on another system/task not listed → add depends_on or create a blocker task.\n");
+        }
+        if (Number(spec.meta.current_revision) > rev) {
+          warns.push(
+            `STALE_SPEC_PIN: plan pins ${specRef} but current is ${sid}@${spec.meta.current_revision} — re-read current revision or revise the plan`,
+          );
+          if (exists(currentPath)) checks.push(`current spec body: ${currentPath}`);
+        }
+      }
+    }
+  }
+
+  // Dependencies
+  const deps = asArr(task.meta.depends_on);
+  if (!deps.length) {
+    warns.push("NO_DEPENDS_ON: depends_on is empty — confirm nothing else must finish first");
+  } else {
+    console.log("DEPENDENCIES\n");
+    for (const dep of deps) {
+      const { kind, ent } = resolveDepEntity(g, dep);
+      if (!ent) {
+        errors.push(`DEP_MISSING: ${dep} not found`);
+        console.log(`  ✗ ${dep} (missing)`);
+        continue;
+      }
+      const st = ent.meta.status || "n/a";
+      const okStatuses =
+        kind === "task"
+          ? ["done"]
+          : kind === "adr"
+            ? ["accepted"]
+            : kind === "req"
+              ? ["active", "done"]
+              : kind === "plan"
+                ? ["approved", "in_progress", "done"]
+                : kind === "epic"
+                  ? ["active", "done"]
+                  : ["draft", "approved", "active", "done"];
+      const ready = kind === "spec" ? true : okStatuses.includes(st);
+      console.log(`  ${ready ? "✓" : "✗"} ${ent.meta.id} [${st}] (${kind})`);
+      if (!ready) {
+        if (kind === "task" && st !== "done") {
+          errors.push(`DEP_NOT_READY: ${dep} status=${st} — finish or unblock before this task`);
+        } else if (kind === "adr" && st === "proposed") {
+          errors.push(`DEP_ADR_UNRESOLVED: ${dep} is still proposed — get acceptance before coding`);
+        } else {
+          warns.push(`DEP_STATUS: ${dep} status=${st} — confirm it is safe to proceed`);
+        }
+      }
+    }
+    console.log("");
+  }
+
+  // ADRs on plan
+  if (plan) {
+    for (const did of asArr(plan.meta.decisions)) {
+      const adr = g.decisions.find((d) => d.meta.id === did);
+      if (!adr) errors.push(`PLAN_ADR_MISSING: ${did}`);
+      else if (adr.meta.status === "proposed") {
+        warns.push(`ADR_PROPOSED: ${did} still proposed — risky to implement against it`);
+      }
+    }
+  }
+
+  if (yamlScalar(task.meta.out_of_scope_risk)) {
+    warns.push(`OUT_OF_SCOPE_RISK noted on task: ${task.meta.out_of_scope_risk}`);
+  }
+
+  // Sources hint
+  const srcFiles = ["sow", "specs", "briefs", "misc"].flatMap((sub) =>
+    listFiles(`docs/product/sources/${sub}`, (n) => n !== "README.md"),
+  );
+  if (!srcFiles.length) {
+    warns.push("NO_PRODUCT_SOURCES: docs/product/sources/ is empty — confirm formal SPEC/SOW still match user intent");
+  }
+
+  console.log("CHECKS");
+  for (const c of checks) console.log(`  · ${c}`);
+  console.log("");
+  for (const w of warns) console.log(`WARN  ${w}`);
+  if (errors.length) {
+    console.error(`\nPREFLIGHT FAIL (${errors.length}) — do not start coding`);
+    for (const e of errors) console.error(`  - ${e}`);
+    console.error("\nFix deps/spec/plan, or get user confirmation on scope, then re-run preflight.");
+    process.exit(1);
+  }
+  console.log("\nPREFLIGHT OK — safe to implement within SPEC scope only.");
+  console.log("If the prompt conflicts with Out of scope or missing deps → ask the user, do not invent scope.");
 }
 
 function cmdFocus(args) {
@@ -812,7 +1001,17 @@ function cmdFocus(args) {
 }
 
 function parseNewFlags(rest) {
-  const flags = { epic: null, plan: null, spec: null, req: null, status: null, focus: false, actor: "agent:ledger" };
+  const flags = {
+    epic: null,
+    plan: null,
+    spec: null,
+    req: null,
+    milestone: null,
+    release: null,
+    status: null,
+    focus: false,
+    actor: "agent:ledger",
+  };
   const titleParts = [];
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
@@ -820,6 +1019,8 @@ function parseNewFlags(rest) {
     else if (a === "--plan") flags.plan = rest[++i];
     else if (a === "--spec") flags.spec = rest[++i];
     else if (a === "--req") flags.req = rest[++i];
+    else if (a === "--ms" || a === "--milestone") flags.milestone = rest[++i];
+    else if (a === "--release") flags.release = rest[++i];
     else if (a === "--status") flags.status = rest[++i];
     else if (a === "--actor") flags.actor = rest[++i];
     else if (a === "--focus") flags.focus = true;
@@ -832,7 +1033,7 @@ function parseNewFlags(rest) {
 
 function cmdNew(kind, rest) {
   if (!kind) {
-    console.error("usage: ledger new <epic|req|spec|sow|plan|task|adr|run|chg|evd|test|rel> <title> [flags]");
+    console.error("usage: ledger new <epic|ms|req|spec|sow|plan|task|adr|run|chg|evd|test|rel> <title> [flags]");
     process.exit(1);
   }
   const { title, flags } = parseNewFlags(rest);
@@ -867,6 +1068,31 @@ plans: []
 ## Scope
 
 …
+`;
+  } else if (kind === "ms" || kind === "milestone") {
+    id = nextId("MS", g.milestones || []);
+    const epic = flags.epic || ctx.current_epic || "null";
+    rel = `docs/plans/milestones/${id}.md`;
+    body = `---
+id: ${id}
+title: ${title}
+status: ${flags.status || "planned"}
+epic: ${epic}
+target_date: null
+tasks: []
+plans: []
+release: ${flags.release || "null"}
+---
+
+# ${id} — ${title}
+
+## Goal
+
+…
+
+## Exit criteria
+
+- [ ] …
 `;
   } else if (kind === "req") {
     id = nextId("REQ", g.requirements);
@@ -1088,13 +1314,26 @@ title: ${title}
 status: ${flags.status || "todo"}
 epic: ${epic}
 plan: ${plan}
+milestone: ${flags.milestone || "null"}
+release: ${flags.release || "null"}
+depends_on: []
+blocks: []
+out_of_scope_risk: null
 agent_runs: []
 files: []
 ---
 
 # ${id}
 
+## Intent
+
 ${title}
+
+## Spec check (required before coding)
+
+- [ ] Read pinned SPEC@rev on the plan
+- [ ] Confirm request is **in scope**
+- [ ] Confirm \`depends_on\` are done/unblocked
 `;
   } else if (kind === "adr") {
     id = nextId("ADR", g.decisions);
@@ -1191,8 +1430,13 @@ ${title}
     body = `---
 id: ${id}
 title: ${title}
-status: ${flags.status || "draft"}
+status: ${flags.status || "planned"}
 version: 0.0.0
+milestone: ${flags.milestone || "null"}
+tasks: []
+evidence: []
+changes: []
+released_at: null
 ---
 
 # ${id}
@@ -1200,7 +1444,7 @@ version: 0.0.0
 ${title}
 `;
   } else {
-    console.error("unknown kind; use epic|req|spec|sow|plan|task|adr|run|chg|evd|test|rel");
+    console.error("unknown kind; use epic|ms|req|spec|sow|plan|task|adr|run|chg|evd|test|rel");
     process.exit(1);
   }
 
@@ -1463,7 +1707,18 @@ function cmdUpgrade() {
     process.exit(1);
   }
   const n = copyDir(scaffold, ROOT, { force: false });
-  for (const d of ["docs/plans/epics", "docs/product/sources", "docs/product/sources/sow", "docs/product/sources/specs", "docs/product/sources/briefs", "docs/product/sources/misc", ".cursor/skills", ".claude/skills", ".github/workflows"]) {
+  for (const d of [
+    "docs/plans/epics",
+    "docs/plans/milestones",
+    "docs/product/sources",
+    "docs/product/sources/sow",
+    "docs/product/sources/specs",
+    "docs/product/sources/briefs",
+    "docs/product/sources/misc",
+    ".cursor/skills",
+    ".claude/skills",
+    ".github/workflows",
+  ]) {
     fs.mkdirSync(abs(d), { recursive: true });
   }
   // refresh always-overwrite critical agent policy + CLI
@@ -1475,6 +1730,13 @@ function cmdUpgrade() {
     "docs/product/sources/specs/README.md",
     "docs/product/sources/briefs/README.md",
     "docs/product/sources/misc/README.md",
+    "docs/plans/milestones/README.md",
+    ".project/templates/TASK.md",
+    ".project/templates/MILESTONE.md",
+    ".project/schemas/TASK.json",
+    ".project/schemas/MILESTONE.json",
+    ".project/schemas/RELEASE.json",
+    ".project/model.yaml",
     ".cursor/rules/project-ledger.mdc",
     ".cursor/rules/agent-toolkit.mdc",
     ".cursor/rules/codebase-style.mdc",
@@ -1608,6 +1870,259 @@ function cmdSources() {
     total += files.length;
   }
   console.log(`\n${total} source file(s). Formal ledger SOW/SPEC stay the implementation source of truth.`);
+}
+
+function taskDepsReady(g, task) {
+  const problems = [];
+  for (const dep of asArr(task.meta.depends_on)) {
+    const { kind, ent } = resolveDepEntity(g, dep);
+    if (!ent) {
+      problems.push(`missing ${dep}`);
+      continue;
+    }
+    const st = ent.meta.status || "n/a";
+    if (kind === "task" && st !== "done") problems.push(`${dep} status=${st}`);
+    if (kind === "adr" && st === "proposed") problems.push(`${dep} still proposed`);
+  }
+  return problems;
+}
+
+function cmdNext(args) {
+  const focus = args.includes("--focus");
+  const g = graph();
+  const candidates = g.tasks
+    .filter((t) => ["todo", "in_progress"].includes(t.meta.status))
+    .map((t) => ({ task: t, blockers: taskDepsReady(g, t) }))
+    .filter((x) => !x.blockers.length);
+  candidates.sort((a, b) => {
+    const rank = (s) => (s === "in_progress" ? 0 : 1);
+    return rank(a.task.meta.status) - rank(b.task.meta.status) || String(a.task.meta.id).localeCompare(String(b.task.meta.id));
+  });
+  console.log("NEXT READY TASKS (deps satisfied)\n");
+  if (!candidates.length) {
+    console.log("  (none) — unblock depends_on or create a task");
+    process.exit(0);
+  }
+  for (const { task } of candidates.slice(0, 10)) {
+    console.log(`  ${task.meta.id}  [${task.meta.status}]  ${task.meta.title || ""}`);
+    console.log(`    plan=${task.meta.plan || "—"}  ms=${yamlScalar(task.meta.milestone) || "—"}  path=${task.path}`);
+  }
+  const top = candidates[0].task;
+  console.log(`\nSuggested: ${top.meta.id}`);
+  if (focus) {
+    cmdFocus([top.meta.id, "--notes", "auto-focused by ledger next"]);
+  } else {
+    console.log(`Focus: node scripts/ledger.mjs focus ${top.meta.id}`);
+    console.log(`Then:  node scripts/ledger.mjs preflight`);
+  }
+}
+
+function cmdHandoff() {
+  const g = graph();
+  const ctx = g.context;
+  console.log("=== PROJECT LEDGER HANDOFF (paste into new chat) ===\n");
+  console.log("1) Run: node scripts/ledger.mjs context");
+  console.log("2) Run: node scripts/ledger.mjs preflight");
+  console.log("3) Work only within SPEC scope; ask if out-of-scope or deps missing.\n");
+  console.log("FOCUS");
+  console.log(`  epic=${ctx.current_epic || "—"} plan=${ctx.current_plan || "—"} task=${ctx.current_task || "—"}`);
+  console.log(`  spec=${ctx.current_spec || "—"} req=${ctx.current_req || "—"}`);
+  if (ctx.notes) console.log(`  notes=${ctx.notes}`);
+  if (ctx.current_task) {
+    const task = g.tasks.find((t) => t.meta.id === ctx.current_task);
+    if (task) {
+      console.log(`\nTASK ${task.meta.id} — ${task.meta.title || ""} [${task.meta.status}]`);
+      console.log(`  path: ${task.path}`);
+      console.log(`  depends_on: ${asArr(task.meta.depends_on).join(", ") || "(none)"}`);
+      console.log(`  files: ${asArr(task.meta.files).join(", ") || "(none)"}`);
+    }
+  }
+  console.log("\nSOURCES: node scripts/ledger.mjs sources");
+  console.log("BOARD:   node scripts/ledger.mjs board");
+  console.log("DONE:    node scripts/ledger.mjs done TASK-####");
+  console.log("REVIEW:  node scripts/ledger.mjs review");
+  console.log("\n=== END HANDOFF ===");
+}
+
+function cmdNote(args) {
+  const text = args.join(" ").trim();
+  if (!text) {
+    console.error("usage: ledger note <text>");
+    process.exit(1);
+  }
+  const ctx = loadContext();
+  if (!ctx.current_task) {
+    console.error("no focused task — run: ledger focus TASK-####");
+    process.exit(1);
+  }
+  const g = graph();
+  const task = g.tasks.find((t) => t.meta.id === ctx.current_task);
+  if (!task) {
+    console.error(`unknown ${ctx.current_task}`);
+    process.exit(1);
+  }
+  let body = read(task.path);
+  const stamp = new Date().toISOString();
+  const line = `- ${stamp}: ${text}`;
+  if (/##\s*Notes\b/i.test(body)) {
+    body = body.replace(/(##\s*Notes\b[^\n]*\n)/i, `$1\n${line}\n`);
+  } else {
+    body = body.trimEnd() + `\n\n## Notes\n\n${line}\n`;
+  }
+  write(task.path, body);
+  ctx.notes = text;
+  ctx.updated_at = stamp;
+  ctx.updated_by = "agent:ledger";
+  saveContext(ctx);
+  appendAgentTrace({ action: "note", target: task.meta.id, note: text });
+  console.log(`noted on ${task.meta.id}`);
+}
+
+function cmdBoard() {
+  const g = graph();
+  console.log("BOARD\n");
+  console.log("MILESTONES");
+  for (const m of g.milestones || []) {
+    console.log(`  ${m.meta.id}  [${m.meta.status}]  ${m.meta.title || ""}  epic=${yamlScalar(m.meta.epic) || "—"}`);
+  }
+  if (!(g.milestones || []).length) console.log("  (none)");
+  console.log("\nEPICS");
+  for (const e of g.epics) console.log(`  ${e.meta.id}  [${e.meta.status}]  ${e.meta.title || ""}`);
+  if (!g.epics.length) console.log("  (none)");
+  console.log("\nPLANS");
+  for (const p of g.plans) {
+    console.log(`  ${p.meta.id}  [${p.meta.status}]  ${p.meta.title || ""}  spec=${p.meta.spec || "—"}`);
+  }
+  if (!g.plans.length) console.log("  (none)");
+  console.log("\nTASKS");
+  const by = { in_progress: [], todo: [], blocked: [], done: [], cancelled: [] };
+  for (const t of g.tasks) {
+    const s = t.meta.status || "todo";
+    (by[s] || (by[s] = [])).push(t);
+  }
+  for (const s of ["in_progress", "todo", "blocked", "done", "cancelled"]) {
+    if (!by[s]?.length) continue;
+    console.log(`  [${s}]`);
+    for (const t of by[s]) {
+      console.log(
+        `    ${t.meta.id}  ${t.meta.title || ""}  plan=${t.meta.plan || "—"} ms=${yamlScalar(t.meta.milestone) || "—"} rel=${yamlScalar(t.meta.release) || "—"}`,
+      );
+    }
+  }
+  if (!g.tasks.length) console.log("  (none)");
+  console.log("\nRELEASES");
+  for (const r of g.releases) {
+    console.log(`  ${r.meta.id}  [${r.meta.status}]  v${r.meta.version || "?"}  ${r.meta.title || ""}  ms=${yamlScalar(r.meta.milestone) || "—"}`);
+  }
+  if (!g.releases.length) console.log("  (none)");
+}
+
+function cmdDone(taskId) {
+  if (!taskId || !taskId.startsWith("TASK-")) {
+    console.error("usage: ledger done TASK-####");
+    process.exit(1);
+  }
+  const g = graph();
+  const rules = g.rules || {};
+  const task = g.tasks.find((t) => t.meta.id === taskId);
+  if (!task) {
+    console.error(`unknown ${taskId}`);
+    process.exit(1);
+  }
+  const errors = [];
+  if (task.meta.status === "cancelled") errors.push("task is cancelled");
+  const blockers = taskDepsReady(g, task);
+  if (blockers.length) errors.push(`depends_on not ready: ${blockers.join("; ")}`);
+
+  if (rules.agent_runs_required && !asArr(task.meta.agent_runs).length) {
+    errors.push("rules.agent_runs_required: add agent_runs (ledger new run …) before done");
+  }
+  if (rules.evidence_required) {
+    const runIds = asArr(task.meta.agent_runs);
+    const hasEv =
+      g.evidence.some((e) => runIds.includes(e.meta.agent_run)) ||
+      runIds.some((rid) => {
+        const run = g.runs.find((r) => r.meta.id === rid);
+        return run && asArr(run.meta.evidence).length;
+      });
+    if (!hasEv) errors.push("rules.evidence_required: link EVD-* to a run before done");
+  }
+  if (rules.tests_required) {
+    const hasTest =
+      g.tests.some((t) => String(t.meta.task || "") === taskId || asArr(t.meta.tasks).includes(taskId)) ||
+      /TEST-\d+/.test(task.body);
+    if (!hasTest) errors.push("rules.tests_required: add/link a TEST-* record (or mention TEST-id in task body)");
+  }
+
+  if (errors.length) {
+    console.error(`DONE FAIL (${errors.length})`);
+    for (const e of errors) console.error(`  - ${e}`);
+    process.exit(1);
+  }
+
+  let text = read(task.path);
+  text = setFrontmatterField(text, "status", "done");
+  write(task.path, text);
+  appendAuditEvent({
+    actor: { type: "agent", id: "ledger" },
+    action: "task.done",
+    target: taskId,
+  });
+  appendAgentTrace({ action: "done", target: taskId });
+  console.log(`${taskId} → done`);
+  console.log("Next: node scripts/ledger.mjs review   # before PR");
+}
+
+function cmdReview() {
+  console.log("REVIEW GATE (before PR)\n");
+  let failed = 0;
+  const runStep = (label, fn) => {
+    console.log(`— ${label}`);
+    try {
+      fn();
+      console.log(`OK  ${label}\n`);
+    } catch (e) {
+      failed++;
+      console.error(`FAIL  ${label}: ${e.message || e}\n`);
+    }
+  };
+
+  // Run as subprocesses for real exit codes
+  const steps = [
+    ["validate", ["validate"]],
+    ["check", ["check"]],
+  ];
+  const ctx = loadContext();
+  if (ctx.current_task) steps.push([`preflight ${ctx.current_task}`, ["preflight", ctx.current_task]]);
+
+  for (const [label, args] of steps) {
+    const entry = exists("scripts/ledger.mjs")
+      ? abs("scripts/ledger.mjs")
+      : fileURLToPath(import.meta.url);
+    const out = spawnSync(process.execPath, [entry, ...args], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    if (out.status !== 0) {
+      failed++;
+      console.error(`FAIL  ${label}`);
+      console.error(out.stdout || "");
+      console.error(out.stderr || "");
+    } else {
+      console.log(`OK  ${label}`);
+    }
+  }
+
+  const g = graph();
+  const proposed = g.decisions.filter((d) => d.meta.status === "proposed");
+  if (proposed.length) {
+    console.log(`WARN  ${proposed.length} proposed ADR(s): ${proposed.map((d) => d.meta.id).join(", ")}`);
+  }
+  if (failed) {
+    console.error(`\nREVIEW FAIL (${failed}) — do not open/merge PR yet`);
+    process.exit(1);
+  }
+  console.log("\nREVIEW OK — safe to open PR (still follow host CI).");
 }
 
 function cmdHistory(id) {
@@ -2095,6 +2610,27 @@ switch (cmd) {
     break;
   case "context":
     cmdContext();
+    break;
+  case "preflight":
+    cmdPreflight(argv[0]);
+    break;
+  case "next":
+    cmdNext(argv);
+    break;
+  case "handoff":
+    cmdHandoff();
+    break;
+  case "note":
+    cmdNote(argv);
+    break;
+  case "board":
+    cmdBoard();
+    break;
+  case "done":
+    cmdDone(argv[0]);
+    break;
+  case "review":
+    cmdReview();
     break;
   case "focus":
     cmdFocus(argv);

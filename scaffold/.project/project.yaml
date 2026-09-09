@@ -13,6 +13,7 @@ source_of_truth:
   product_sources: docs/product/sources
   decisions: docs/architecture/adr
   epics: docs/plans/epics
+  milestones: docs/plans/milestones
   plans: docs/plans
   agent_runs: .engineering/agent-runs
   evidence: .engineering/evidence
@@ -40,6 +41,7 @@ id_prefixes:
   PROJECT: PROJECT
   PERSON: USER
   EPIC: EPIC
+  MILESTONE: MS
   REQUIREMENT: REQ
   SOW: SOW
   SPEC: SPEC

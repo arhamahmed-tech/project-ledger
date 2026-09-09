@@ -16,6 +16,7 @@ export function graph() {
     project: loadYamlishProject(),
     people: loadPeople(),
     epics: loadMd("docs/plans/epics", "EPIC-"),
+    milestones: loadMd("docs/plans/milestones", "MS-"),
     requirements: loadMd("docs/product/requirements", "REQ-"),
     specs: listFiles("docs/product/specs", (n) => n === "index.md").map((f) => {
       const { meta, body } = parseFrontmatter(read(f));
@@ -42,6 +43,7 @@ export function graph() {
 export function counts(g = graph()) {
   return {
     epics: g.epics.length,
+    milestones: g.milestones.length,
     requirements: g.requirements.length,
     sow_revisions: listFiles("docs/product/sow", (n) => /^v\d+\.md$/.test(n)).length,
     specifications: g.specs.length,

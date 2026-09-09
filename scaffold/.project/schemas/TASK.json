@@ -10,6 +10,17 @@
     "status": { "type": "string", "enum": ["todo", "in_progress", "blocked", "done", "cancelled"] },
     "epic": { "type": ["string", "null"], "pattern": "^EPIC-[0-9]+$" },
     "plan": { "type": "string", "pattern": "^PLAN-[0-9]+$" },
+    "milestone": { "type": ["string", "null"], "pattern": "^MS-[0-9]+$" },
+    "release": { "type": ["string", "null"], "pattern": "^REL-[0-9]+$" },
+    "depends_on": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^(TASK|PLAN|SPEC|REQ|ADR|EPIC|MS)-[0-9]+(@[0-9]+)?$" }
+    },
+    "blocks": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^TASK-[0-9]+$" }
+    },
+    "out_of_scope_risk": { "type": ["string", "null"] },
     "agent_runs": { "type": "array", "items": { "type": "string", "pattern": "^RUN-[0-9]+$" } },
     "files": { "type": "array", "items": { "type": "string" } }
   },

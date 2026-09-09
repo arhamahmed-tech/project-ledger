@@ -261,3 +261,80 @@ test("sources lists user originals", () => {
   assert.match(out.stdout, /prd\.md/);
   assert.match(out.stdout, /2 source file/);
 });
+
+test("preflight fails without SPEC pin; passes with scope", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "pf"], dir).status, 0);
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const runLocal = (args) => spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(runLocal(["new", "req", "Need refund"]).status, 0);
+  assert.equal(runLocal(["new", "spec", "Refunds", "--req", "REQ-0001"]).status, 0);
+  assert.equal(runLocal(["new", "plan", "Impl", "--spec", "SPEC-0001@1"]).status, 0);
+  assert.equal(runLocal(["new", "task", "Do it", "--plan", "PLAN-0001"]).status, 0);
+
+  let pf = runLocal(["preflight", "TASK-0001"]);
+  assert.equal(pf.status, 0, pf.stderr || pf.stdout);
+  assert.match(pf.stdout, /PREFLIGHT OK|OUT OF SCOPE|IN SCOPE/);
+
+  assert.equal(runLocal(["new", "task", "First", "--plan", "PLAN-0001"]).status, 0);
+  const t2 = path.join(dir, "docs/plans/tasks/TASK-0002.md");
+  let body = fs.readFileSync(t2, "utf8");
+  body = body.replace("depends_on: []", "depends_on: [TASK-9999]");
+  fs.writeFileSync(t2, body);
+  pf = runLocal(["preflight", "TASK-0002"]);
+  assert.notEqual(pf.status, 0);
+  assert.match(pf.stderr + pf.stdout, /DEP_MISSING|PREFLIGHT FAIL/);
+});
+
+test("next handoff board note done review", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-"));
+  assert.equal(run(["init", "--name", "pack"], dir).status, 0);
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  const runLocal = (args) => spawnSync(process.execPath, [bin, ...args], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(runLocal(["new", "ms", "Sprint 1"]).status, 0);
+  assert.ok(fs.existsSync(path.join(dir, "docs/plans/milestones/MS-0001.md")));
+  assert.equal(runLocal(["new", "req", "R"]).status, 0);
+  assert.equal(runLocal(["new", "spec", "S", "--req", "REQ-0001"]).status, 0);
+  assert.equal(runLocal(["new", "plan", "P", "--spec", "SPEC-0001@1"]).status, 0);
+  assert.equal(runLocal(["new", "task", "Ready", "--plan", "PLAN-0001", "--ms", "MS-0001"]).status, 0);
+
+  const next = runLocal(["next"]);
+  assert.equal(next.status, 0, next.stderr || next.stdout);
+  assert.match(next.stdout, /TASK-0001/);
+
+  const hand = runLocal(["handoff"]);
+  assert.equal(hand.status, 0);
+  assert.match(hand.stdout, /HANDOFF/);
+
+  const board = runLocal(["board"]);
+  assert.equal(board.status, 0);
+  assert.match(board.stdout, /MS-0001/);
+  assert.match(board.stdout, /TASK-0001/);
+
+  assert.equal(runLocal(["focus", "TASK-0001"]).status, 0);
+  const note = runLocal(["note", "edge case noted"]);
+  assert.equal(note.status, 0, note.stderr || note.stdout);
+  assert.match(fs.readFileSync(path.join(dir, "docs/plans/tasks/TASK-0001.md"), "utf8"), /edge case noted/);
+
+  // done should fail without run/evidence/tests under default rules
+  const doneFail = runLocal(["done", "TASK-0001"]);
+  assert.notEqual(doneFail.status, 0);
+
+  // relax rules for done success path
+  let py = fs.readFileSync(path.join(dir, ".project/project.yaml"), "utf8");
+  py = py
+    .replace(/agent_runs_required:\s*true/, "agent_runs_required: false")
+    .replace(/evidence_required:\s*true/, "evidence_required: false")
+    .replace(/tests_required:\s*true/, "tests_required: false");
+  fs.writeFileSync(path.join(dir, ".project/project.yaml"), py);
+  const doneOk = runLocal(["done", "TASK-0001"]);
+  assert.equal(doneOk.status, 0, doneOk.stderr || doneOk.stdout);
+  assert.match(fs.readFileSync(path.join(dir, "docs/plans/tasks/TASK-0001.md"), "utf8"), /status: done/);
+
+  spawnSync("git", ["init"], { cwd: dir, encoding: "utf8" });
+  const rev = runLocal(["review"]);
+  // review may fail check if untracked code — should still run validate
+  assert.match(rev.stdout + rev.stderr, /REVIEW/);
+});
