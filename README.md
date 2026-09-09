@@ -1,36 +1,67 @@
 # project-ledger
 
-Git-native **Project Ledger** for any existing repo — works with **any agent harness**.
+Git-native **Project Ledger** for any existing repo. Works with **Cursor, Claude Code, Copilot, Codex**, and anything that reads `AGENTS.md`.
 
-| Harness | What `init` installs |
-|---------|----------------------|
-| **Any / Codex** | `AGENTS.md` + `docs/agent-protocol.md` |
-| **Claude Code** | `CLAUDE.md` + `.claude/settings.json` + `.claude/rules/*` |
-| **Cursor** | `.cursor/rules/*.mdc` + `.cursor/hooks.json` |
-| **GitHub Copilot** | `.github/copilot-instructions.md` |
+## Why 0.5 is better
 
-Shared hooks live in `.project/harness/` and are called from both Cursor and Claude.
+- **Offline-first** — `init` vendors `scripts/ledger.mjs` into the target repo (hooks never call the npm registry)
+- **`doctor`** — diagnoses missing files / CLI resolution
+- **Harness-agnostic** — one protocol (`docs/agent-protocol.md`), thin adapters per tool
+- **Security + codebase style** rules included
+- Empty dirs fixed with README placeholders
 
-## Install
+## Install into any project (no npm publish needed)
 
 ```bash
+# from the package folder
+cd /var/www/projects/project-ledger
+npm pack   # → project-ledger-0.5.0.tgz
+
+# into your app
 cd /path/to/your-app
-npm i -D project-ledger   # or path/tarball
+npm i -D /var/www/projects/project-ledger
+# or: npm i -D /var/www/projects/project-ledger/project-ledger-0.5.0.tgz
+
 npx project-ledger init --name your-app
-npx project-ledger validate
+node scripts/ledger.mjs doctor
+node scripts/ledger.mjs validate
 ```
 
-## Publish
+Or without adding a dependency:
+
+```bash
+node /var/www/projects/project-ledger/bin/project-ledger.js init --name your-app
+node scripts/ledger.mjs validate
+```
+
+## Daily commands
+
+```bash
+node scripts/ledger.mjs status
+node scripts/ledger.mjs validate
+node scripts/ledger.mjs drift
+node scripts/ledger.mjs why src/foo.ts
+node scripts/ledger.mjs impact SPEC-0010
+node scripts/ledger.mjs ui
+# if package.json scripts were merged:
+pnpm ledger validate
+```
+
+## Harness map
+
+| Harness | Files |
+|---------|--------|
+| Any | `AGENTS.md`, `docs/agent-protocol.md` |
+| Claude Code | `CLAUDE.md`, `.claude/settings.json`, `.claude/rules/` |
+| Cursor | `.cursor/rules/`, `.cursor/hooks.json` |
+| Copilot | `.github/copilot-instructions.md` |
+| Shared hooks | `.project/harness/` |
+
+## Publish (optional)
 
 ```bash
 cd /var/www/projects/project-ledger
-npm pack          # → project-ledger-0.4.0.tgz
 npm publish --access public
 ```
 
-## Canonical policy
-
-**One protocol file:** `docs/agent-protocol.md`  
-Harness files only adapt — they must not invent conflicting rules.
-
-Includes: Project Ledger · skills/`find-skills` · MCP · hooks · **security/code review** · **host codebase style**.
+Until published, always install from **path** or **tarball**.

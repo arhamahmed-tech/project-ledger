@@ -11,11 +11,30 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-/** Package install root (contains scaffold/) */
-const PKG_ROOT = path.resolve(__dirname, "..");
 /** Target project root — cwd, or LEDGER_ROOT override */
 const ROOT = path.resolve(process.env.LEDGER_ROOT || process.cwd());
 const PORT = Number(process.env.LEDGER_PORT || 3847);
+
+function resolvePkgRoot() {
+  const candidates = [
+    process.env.LEDGER_PKG_ROOT,
+    path.resolve(__dirname, ".."),
+    path.resolve(__dirname, "../.."),
+    path.join(ROOT, "node_modules/project-ledger"),
+    path.resolve(ROOT, "../project-ledger"),
+  ].filter(Boolean);
+  for (const c of candidates) {
+    if (
+      fs.existsSync(path.join(c, "scaffold", ".project", "schemas")) ||
+      fs.existsSync(path.join(c, "scaffold", ".project", "project.yaml"))
+    ) {
+      return path.resolve(c);
+    }
+  }
+  return path.resolve(__dirname, "..");
+}
+
+const PKG_ROOT = resolvePkgRoot();
 
 function abs(p) {
   return path.join(ROOT, p);
@@ -300,6 +319,7 @@ function usage() {
   console.log(`Project Ledger
 
   project-ledger init [--name my-app] [--force]
+  project-ledger doctor
   project-ledger status
   project-ledger validate
   project-ledger history <id>
@@ -312,6 +332,12 @@ function usage() {
   project-ledger event <action> <target> [--spec SPEC@rev]
   project-ledger hash <path>
   project-ledger ui [--port 3847]
+
+Offline install (package not on npm yet):
+  npm i -D /path/to/project-ledger
+  npm i -D ./project-ledger-0.5.0.tgz
+  node /path/to/project-ledger/bin/project-ledger.js init --name my-app
+  node scripts/ledger.mjs validate
 `);
 }
 
@@ -368,11 +394,12 @@ function mergePackageJsonScripts() {
     pkg.scripts = pkg.scripts || {};
     let changed = false;
     const add = {
-      ledger: "project-ledger",
-      "ledger:status": "project-ledger status",
-      "ledger:validate": "project-ledger validate",
-      "ledger:drift": "project-ledger drift",
-      "ledger:ui": "project-ledger ui",
+      ledger: "node scripts/ledger.mjs",
+      "ledger:status": "node scripts/ledger.mjs status",
+      "ledger:validate": "node scripts/ledger.mjs validate",
+      "ledger:drift": "node scripts/ledger.mjs drift",
+      "ledger:doctor": "node scripts/ledger.mjs doctor",
+      "ledger:ui": "node scripts/ledger.mjs ui",
     };
     for (const [k, v] of Object.entries(add)) {
       if (!pkg.scripts[k]) {
@@ -387,6 +414,52 @@ function mergePackageJsonScripts() {
   } catch (e) {
     console.warn("Could not update package.json:", e.message);
   }
+}
+
+function vendorCli() {
+  const from = path.join(PKG_ROOT, "src/ledger.mjs");
+  if (!fs.existsSync(from)) {
+    console.warn("Could not vendor CLI (src/ledger.mjs missing). Set LEDGER_PKG_ROOT.");
+    return false;
+  }
+  const dest = abs("scripts/ledger.mjs");
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.copyFileSync(from, dest);
+  return true;
+}
+
+function cmdDoctor() {
+  const checks = [];
+  const ok = (label, pass, hint = "") => checks.push({ label, pass, hint });
+
+  ok(".project/project.yaml", exists(".project/project.yaml"), "Run: project-ledger init");
+  ok("docs/agent-protocol.md", exists("docs/agent-protocol.md"));
+  ok("AGENTS.md", exists("AGENTS.md"));
+  ok("scripts/ledger.mjs", exists("scripts/ledger.mjs"), "Re-run init to vendor local CLI");
+  ok(".project/harness/validate-on-stop.sh", exists(".project/harness/validate-on-stop.sh"));
+  ok("Cursor rule", exists(".cursor/rules/project-ledger.mdc"));
+  ok("Claude adapter", exists("CLAUDE.md"));
+  ok("security-review", exists(".cursor/rules/security-review.mdc") || exists(".claude/rules/security-review.md"));
+  ok("codebase-style", exists(".cursor/rules/codebase-style.mdc") || exists(".claude/rules/codebase-style.md"));
+  ok(`scaffold at PKG_ROOT`, fs.existsSync(path.join(PKG_ROOT, "scaffold")), "npm i -D /path/to/project-ledger or LEDGER_PKG_ROOT");
+
+  console.log("Project Ledger doctor\n");
+  console.log(`ROOT      ${ROOT}`);
+  console.log(`PKG_ROOT  ${PKG_ROOT}\n`);
+  let failed = 0;
+  for (const c of checks) {
+    console.log(`${c.pass ? "OK  " : "FAIL"} ${c.label}`);
+    if (!c.pass) {
+      failed++;
+      if (c.hint) console.log(`     → ${c.hint}`);
+    }
+  }
+  console.log("");
+  if (failed) {
+    console.log(`${failed} issue(s).`);
+    process.exit(1);
+  }
+  cmdValidate();
 }
 
 function cmdInit(args) {
@@ -404,9 +477,11 @@ function cmdInit(args) {
   }
 
   if (exists(".project/project.yaml") && !force) {
+    vendorCli();
     console.log("Already initialized (.project/project.yaml present).");
-    console.log("Use: project-ledger init --force   to refresh missing files only");
-    console.log("Or:  project-ledger validate");
+    console.log("Refreshed scripts/ledger.mjs when package CLI is available.");
+    console.log("Use: project-ledger init --force   to fill missing scaffold files");
+    console.log("Or:  node scripts/ledger.mjs validate");
     return;
   }
 
@@ -447,6 +522,7 @@ function cmdInit(args) {
   patchProjectYaml(name);
   ensureGitignoreEntries();
   mergePackageJsonScripts();
+  const vendored = vendorCli();
 
   // bootstrap audit event
   const evPath = abs(".audit/events.jsonl");
@@ -465,10 +541,12 @@ function cmdInit(args) {
   console.log(`Project Ledger initialized in ${ROOT}`);
   console.log(`  project name: ${name}`);
   console.log(`  files written/kept: ${n}+ (skipped existing)`);
+  console.log(`  local CLI: ${vendored ? "scripts/ledger.mjs" : "NOT VENDORED"}`);
   console.log("");
-  console.log("Next:");
-  console.log("  project-ledger validate");
-  console.log("  project-ledger status");
+  console.log("Next (works offline — no npm registry):");
+  console.log("  node scripts/ledger.mjs validate");
+  console.log("  node scripts/ledger.mjs doctor");
+  console.log("  node scripts/ledger.mjs status");
   console.log("  Edit .project/people.yaml and docs/product/vision.md");
 }
 
@@ -1014,6 +1092,9 @@ const [cmd, ...argv] = process.argv.slice(2);
 switch (cmd) {
   case "init":
     cmdInit(argv);
+    break;
+  case "doctor":
+    cmdDoctor();
     break;
   case "status":
     cmdStatus();
