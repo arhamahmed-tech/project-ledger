@@ -1,7 +1,7 @@
 {
   "name": "project-ledger",
-  "version": "0.11.0",
-  "description": "Git-native Project Ledger — autonomous agent SDLC (context/onboard/preflight), adopt, inventory, board/done/review.",
+  "version": "0.12.0",
+  "description": "Git-native Project Ledger — reliable agent SDLC gates, evidence freshness, clear lifecycle.",
   "type": "module",
   "bin": {
     "project-ledger": "./bin/project-ledger.js",

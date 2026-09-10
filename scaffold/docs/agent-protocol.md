@@ -29,6 +29,57 @@ Git is the source of truth for intent and history.
 | Audit | `.audit/events.jsonl` |
 | Agent attribution | `.agent-trace/` |
 
+### Lifecycle (do not treat as 13 manual steps every task)
+
+**Setup / product change** (when sources or requirements change):
+
+`sources → formalize SOW/REQ/SPEC → ADR if needed → epic/plan/task`
+
+**Normal task execution** (when the board already has an approved plan + task):
+
+`context → focus/next → preflight → implement → verify (EVD) → done → review`
+
+**Automatic safeguards** (not a substitute for the above):
+
+`hooks / CI → validate + check` — local hooks can be bypassed; CI enforces merge only when configured.
+
+Use `onboard` when phase diagnosis or missing setup needs it. Do **not** regenerate valid SOW/SPEC/plans for every small task.
+
+### Gate contracts (accurate enforcement claims)
+
+| Command | What it proves | What it does **not** prove |
+|---------|----------------|----------------------------|
+| `preflight` | Task has plan, SPEC@rev, deps ready; plan approved when `implementation_requires_approval`; prints scope | Later code is correct or still in scope |
+| `validate` | Ledger structure + reference integrity (+ audit hash chain) | Software works |
+| `check` | Changed implementation paths are listed on TASK/CHG `files:` | Tests passed |
+| `done` | Required RUN + **passing fresh** evidence (+ tests rule); plan still approved | Re-ran your suite; only that records say so |
+| `review` | Composition of validate + check (+ preflight if focused) | Host CI green |
+
+A **SPEC pin is not approval**. When `rules.implementation_requires_approval: true`, plan `status` must be `approved` / `in_progress` / `done` (not `draft`). Agent-generated docs do not imply human approval.
+
+### Evidence / verification
+
+```bash
+ledger new run "implement TASK-0001" --plan PLAN-0001
+ledger new evd "npm test" --run RUN-0001 --result pass --task TASK-0001
+ledger done TASK-0001
+```
+
+`result` values: `pass` | `fail` | `not_run` | `blocked` | `waived`.  
+Only `pass` (or explicit `waived`) can satisfy `done`. `fail` / `not_run` / `blocked` never count as pass.
+
+`code_state` hashes the task’s `files:` working tree. If those files change after evidence was recorded, `done` fails with `EVIDENCE_STALE`. Writing EVD under `.engineering/` does **not** invalidate that hash. Empty `files: []` fails `done` with `TASK_FILES_EMPTY` when evidence is required.
+
+Legacy EVD without `code_state` is **not** treated as fresh verification — re-record.
+
+### Scope / requirement changes (preserve history)
+
+1. Update or add user originals under `docs/product/sources/` (do not rewrite prior formal revisions in place).
+2. Identify impact: `ledger impact <EPIC|PLAN|SPEC>` / `ledger drift` / re-read affected plans.
+3. Obtain approval when required (plan/ADR status — not inferred from a new SPEC file existing).
+4. `ledger revise SPEC-####` or `ledger revise SOW-####` — creates a **new** revision; old revisions stay immutable.
+5. Reassess tasks: keep tasks done against the old pin historically meaningful; create follow-up tasks for the new revision (update plan.spec to `SPEC@newRev` for new work only).
+
 ### Product knowledge (user → ledger)
 
 1. User drops full SOW / specs / briefs into **`docs/product/sources/`** (do not overwrite).
@@ -44,7 +95,7 @@ node scripts/ledger.mjs sources
 
 ```bash
 node scripts/ledger.mjs context
-node scripts/ledger.mjs onboard         # if context is empty (hooks/agent auto-run this)
+# onboard only if focus empty / setup unclear
 node scripts/ledger.mjs preflight          # or: preflight TASK-0003
 ```
 
@@ -54,8 +105,10 @@ node scripts/ledger.mjs preflight          # or: preflight TASK-0003
 |-------|----------------|
 | No / missing SPEC@rev | Cannot implement without a pinned spec |
 | SPEC revision missing | Pin is broken |
+| Plan still `draft` (approval required) | SPEC pin ≠ approval — set plan status to approved |
 | Task `blocked` / `cancelled` | Do not code |
 | `depends_on` not ready | Unfinished TASK / proposed ADR / missing entity |
+| Proposed ADR on plan (approval required) | Resolve decision first |
 | Stale SPEC pin | Warn — re-read current revision |
 
 It also prints **In scope / Out of scope** from the SPEC. Edge cases:
@@ -83,6 +136,7 @@ LEDGER_STRICT=1                                # stop hooks exit non-zero on val
 ```
 
 Do not claim ledger completion without `validate` OK. Do not merge PRs that fail the ledger workflow.
+Valid ledger records alone do not prove working software.
 
 CLI (any of):
 

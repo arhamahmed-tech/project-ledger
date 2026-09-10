@@ -272,7 +272,7 @@ test("preflight fails without SPEC pin; passes with scope", () => {
 
   assert.equal(runLocal(["new", "req", "Need refund"]).status, 0);
   assert.equal(runLocal(["new", "spec", "Refunds", "--req", "REQ-0001"]).status, 0);
-  assert.equal(runLocal(["new", "plan", "Impl", "--spec", "SPEC-0001@1"]).status, 0);
+  assert.equal(runLocal(["new", "plan", "Impl", "--spec", "SPEC-0001@1", "--status", "approved"]).status, 0);
   assert.equal(runLocal(["new", "task", "Do it", "--plan", "PLAN-0001"]).status, 0);
 
   let pf = runLocal(["preflight", "TASK-0001"]);
@@ -280,13 +280,22 @@ test("preflight fails without SPEC pin; passes with scope", () => {
   assert.match(pf.stdout, /PREFLIGHT OK|OUT OF SCOPE|IN SCOPE/);
   assert.match(pf.stdout, /CODE STYLE \(mandatory before editing/);
   assert.match(pf.stdout, /camelCase/);
+  assert.match(pf.stdout, /SPEC existence alone is not approval|plan approval/);
+
+  // draft plan must not pass when approval required
+  assert.equal(runLocal(["new", "plan", "Drafty", "--spec", "SPEC-0001@1", "--status", "draft"]).status, 0);
+  assert.equal(runLocal(["new", "task", "Blocked by draft", "--plan", "PLAN-0002"]).status, 0);
+  const pfDraft = runLocal(["preflight", "TASK-0002"]);
+  assert.notEqual(pfDraft.status, 0);
+  assert.match(pfDraft.stderr + pfDraft.stdout, /PLAN_NOT_APPROVED/);
+  assert.match(pfDraft.stderr + pfDraft.stdout, /fix:/);
 
   assert.equal(runLocal(["new", "task", "First", "--plan", "PLAN-0001"]).status, 0);
-  const t2 = path.join(dir, "docs/plans/tasks/TASK-0002.md");
-  let body = fs.readFileSync(t2, "utf8");
+  const t3 = path.join(dir, "docs/plans/tasks/TASK-0003.md");
+  let body = fs.readFileSync(t3, "utf8");
   body = body.replace("depends_on: []", "depends_on: [TASK-9999]");
-  fs.writeFileSync(t2, body);
-  pf = runLocal(["preflight", "TASK-0002"]);
+  fs.writeFileSync(t3, body);
+  pf = runLocal(["preflight", "TASK-0003"]);
   assert.notEqual(pf.status, 0);
   assert.match(pf.stderr + pf.stdout, /DEP_MISSING|PREFLIGHT FAIL/);
 });
@@ -301,7 +310,7 @@ test("next handoff board note done review", () => {
   assert.ok(fs.existsSync(path.join(dir, "docs/plans/milestones/MS-0001.md")));
   assert.equal(runLocal(["new", "req", "R"]).status, 0);
   assert.equal(runLocal(["new", "spec", "S", "--req", "REQ-0001"]).status, 0);
-  assert.equal(runLocal(["new", "plan", "P", "--spec", "SPEC-0001@1"]).status, 0);
+  assert.equal(runLocal(["new", "plan", "P", "--spec", "SPEC-0001@1", "--status", "approved"]).status, 0);
   assert.equal(runLocal(["new", "task", "Ready", "--plan", "PLAN-0001", "--ms", "MS-0001"]).status, 0);
 
   const next = runLocal(["next"]);
