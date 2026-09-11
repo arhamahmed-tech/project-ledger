@@ -45,6 +45,8 @@ import {
   redactSecrets,
   normalizeResult,
 } from "./lib/gates.mjs";
+import { planAuto, formatAutoPlan, excerpt } from "./lib/auto.mjs";
+import { evaluateStyleTooling } from "./lib/style.mjs";
 
 function usage() {
   console.log(`Project Ledger
@@ -55,6 +57,7 @@ function usage() {
   project-ledger inventory               code paths not covered by TASK files
   project-ledger doctor | status | onboard | validate | check | sources | board
   project-ledger context | preflight [TASK] | postflight [TASK] | next [--focus] | handoff
+  project-ledger auto [--yes]            phase-driven formalize (dry-run default)
   project-ledger focus <id> | focus --clear
   project-ledger note <text>          append note to focused task
   project-ledger done <TASK-id>       mark done if postflight gates pass
@@ -66,13 +69,19 @@ function usage() {
   project-ledger hooks install | trace <note> | history | why | who | drift | impact | timeline | decisions | event | hash | ui
 
 Lifecycle (not 13 manual steps every time):
-  Setup / product change:  sources → formalize → ADR if needed → plans/tasks
+  Setup / product change:  sources → ledger auto [--yes] → review formal docs
   Normal task:             context → focus/next → preflight → implement → verify → postflight/done → review
   Safeguards:              hooks/CI → validate/check (strict by default; LEDGER_STRICT=0 to soften stop hooks)
 
+Primary:
+  context | onboard | auto [--yes] | preflight | postflight | next | done | review | new | sources | validate | check | doctor
+
+Secondary:
+  status | board | handoff | note | inventory | adopt | revise | drift | why | impact | timeline | decisions | ui | hooks
+
 Existing/mid-build repo:
   node /path/to/project-ledger/bin/project-ledger.js adopt --name my-app
-New chat:  node scripts/ledger.mjs context   # onboard only if phase/setup unclear
+New chat:  node scripts/ledger.mjs context   # onboard / auto if setup unclear
 Before code: node scripts/ledger.mjs preflight
 After code:  node scripts/ledger.mjs postflight
 `);
@@ -335,6 +344,20 @@ function cmdDoctor() {
   ok("codebase-style", exists(".cursor/rules/codebase-style.mdc") || exists(".claude/rules/codebase-style.md"));
   ok("conventions.yaml", exists(".project/conventions.yaml"), "Run: project-ledger upgrade");
   ok("code-style doc", exists("docs/conventions/code-style.md"), "Run: project-ledger upgrade");
+  const style = evaluateStyleTooling(loadRules());
+  if (style.level === "error") {
+    ok("host style tooling", false, `${style.msg} — ${style.fix}`);
+  } else if (style.level === "warn") {
+    ok(
+      "host style tooling (advisory)",
+      true,
+      `WARN: ${style.msg}. ${style.fix}`,
+    );
+  } else if (style.found?.length) {
+    ok("host style tooling", true, style.found.join(", "));
+  } else {
+    ok("host style tooling", true, "(follow_existing_codebase_style off)");
+  }
   ok(`scaffold at PKG_ROOT`, fs.existsSync(path.join(PKG_ROOT, "scaffold")), "npm i -D /path/to/project-ledger or LEDGER_PKG_ROOT");
   ok("docs/plans/epics", exists("docs/plans/epics"), "Run: project-ledger init --force");
   ok("docs/product/sources", exists("docs/product/sources/README.md"), "Run: project-ledger upgrade — user originals folder");
@@ -381,6 +404,8 @@ function cmdDoctor() {
     if (!c.pass) {
       failed++;
       if (c.hint) console.log(`     → ${c.hint}`);
+    } else if (c.hint && /WARN/i.test(c.hint)) {
+      console.log(`     → ${c.hint}`);
     }
   }
   console.log("");
@@ -609,13 +634,61 @@ function cmdOnboard() {
     console.log("Code style: read docs/conventions/code-style.md — naming per .project/conventions.yaml (e.g. camelCase variables).");
   }
   if (o.phase === "sources_only") {
-    console.log("Suggested now: node scripts/ledger.mjs new sow   (derive from source — do not rewrite originals)");
-    console.log("Or:             node scripts/ledger.mjs sources");
+    console.log("Suggested now: node scripts/ledger.mjs auto          # dry-run formalize from sources");
+    console.log("           or: node scripts/ledger.mjs auto --yes    # apply (review SOW/SPEC after)");
   } else if (o.phase === "active" || o.phase === "implementation") {
     console.log("Suggested now: node scripts/ledger.mjs next --focus");
+    console.log("           or: node scripts/ledger.mjs auto          # focuses next task");
   } else if (o.phase === "bootstrapped") {
-    console.log("Suggested now: drop originals into docs/product/sources/ then node scripts/ledger.mjs sources");
+    console.log("Suggested now: drop originals into docs/product/sources/ then node scripts/ledger.mjs auto");
+  } else {
+    console.log("Suggested now: node scripts/ledger.mjs auto          # dry-run next formalize steps");
   }
+}
+
+function cmdAuto(args) {
+  const yes = args.includes("--yes");
+  const plan = planAuto(graph());
+  console.log(formatAutoPlan(plan));
+  if (plan.blockers?.length && !plan.actions?.length) {
+    process.exit(1);
+  }
+  if (!yes) {
+    console.log("\n(dry-run) Re-run with --yes to apply. Sources are never rewritten.");
+    return;
+  }
+  console.log("\nAPPLYING…");
+  for (const a of plan.actions) {
+    if (a.op === "next") {
+      cmdNext(a.args);
+      continue;
+    }
+    if (a.op === "new") {
+      const kind = a.args[0];
+      const rest = a.args.slice(1);
+      cmdNew(kind, rest);
+      if (kind === "sow" && (a.seedFrom || plan.seedFrom)) {
+        const src = a.seedFrom || plan.seedFrom;
+        const indexRel = "docs/product/sow/index.md";
+        const revRel = exists(indexRel)
+          ? (() => {
+              const { meta } = parseFrontmatter(read(indexRel));
+              return `docs/product/sow/v${meta.current_revision || 1}.md`;
+            })()
+          : "docs/product/sow/v1.md";
+        if (exists(revRel)) {
+          let body = read(revRel);
+          if (!body.includes("## Derived from sources")) {
+            body += `\n\n## Derived from sources\n\nSource (read-only): \`${src}\`\n\n\`\`\`\n${excerpt(src)}\n\`\`\`\n`;
+            write(revRel, body);
+            write(revRel, setFrontmatterField(read(revRel), "content_hash", bodyHash(revRel)));
+            console.log(`annotated ${revRel} from ${src}`);
+          }
+        }
+      }
+    }
+  }
+  console.log("\nAUTO DONE — review formal SOW/SPEC/REQ before coding. Then: preflight → implement → postflight → done.");
 }
 
 function cmdValidate() {
@@ -1033,6 +1106,11 @@ function cmdPreflight(taskIdArg) {
 
   if (rules.follow_existing_codebase_style !== false) {
     printStyleConventions({ hard: false, warns });
+    const style = evaluateStyleTooling(rules);
+    if (style.level === "warn") warns.push(`${style.msg} — ${style.fix}`);
+    if (style.level === "error") {
+      errors.push({ code: "STYLE_TOOLING_REQUIRED", msg: style.msg, fix: style.fix });
+    }
   }
 
   console.log("CHECKS");
@@ -3076,6 +3154,9 @@ switch (cmd) {
     break;
   case "onboard":
     cmdOnboard();
+    break;
+  case "auto":
+    cmdAuto(argv);
     break;
   case "validate":
     cmdValidate();

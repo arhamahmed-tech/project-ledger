@@ -3,3 +3,16 @@ node_modules/
 .DS_Store
 coverage/
 .tmp/
+
+# Accidental consumer scaffold if someone runs init in this package repo (root only)
+/.project/
+/.engineering/
+/.audit/
+/.agent-trace/
+/docs/
+/scripts/
+/AGENTS.md
+/CLAUDE.md
+/.cursor/
+/.claude/
+/.github/
