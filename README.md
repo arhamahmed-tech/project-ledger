@@ -91,7 +91,7 @@ Not thirteen mandatory steps for every task:
 
 | Mode | Flow |
 |------|------|
-| Setup / product change | `sources` → formalize SOW/REQ/SPEC → ADR if needed → plans/tasks |
+| Setup / product change | `sources` → `auto [--yes]` → review formal docs → plans/tasks |
 | Normal task | `context` → focus/next → `preflight` → implement → verify (`evd`) → `postflight`/`done` → `review` |
 | Safeguards | hooks/CI → `validate` / `check` (strict by default; `LEDGER_STRICT=0` softens stop hooks) |
 
@@ -109,6 +109,7 @@ Not thirteen mandatory steps for every task:
 | `project-ledger status` | Focus + entity counts + drift summary |
 | `project-ledger context` | Print active epic/plan/task paths for a new chat |
 | `project-ledger onboard` | Phase diagnosis when setup/focus is unclear |
+| `project-ledger auto [--yes]` | Dry-run (default) or apply next formalize steps from phase |
 | `project-ledger preflight [TASK]` | Readiness before coding (SPEC, approval, deps, scope print) |
 | `project-ledger postflight [TASK]` | After coding: no drift + fresh evidence (same gates as done) |
 | `project-ledger next [--focus]` | Next ready task |

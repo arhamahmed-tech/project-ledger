@@ -2,6 +2,13 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.14.0 — 2026-09-11
+
+### Best-path pack (UX + maintain + auto)
+- **A — Agent UX:** primary vs secondary CLI in usage; slim `AGENTS.md`; host style tooling advisory in `doctor`/`preflight` (eslint/prettier/ruff/biome); `style_tooling_required` opt-in hard fail
+- **B — Maintainability:** `src/lib/auto.mjs`, `src/lib/style.mjs` extracted; adversarial auto/style tests
+- **C — Autonomy:** `ledger auto` dry-run by default; `ledger auto --yes` applies phase-driven `new sow/req/spec/epic/plan/task` (or `next --focus`) without rewriting sources; SOW annotated with source excerpt
+
 ## 0.13.0 — 2026-09-11
 
 ### Postflight (after coding)

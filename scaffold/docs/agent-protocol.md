@@ -43,7 +43,7 @@ Git is the source of truth for intent and history.
 
 `hooks / CI → validate + check` — stop hooks **hard-fail by default** (`LEDGER_STRICT=0` to soften). `git commit --no-verify` can still bypass local hooks; enable required CI checks on the host.
 
-Use `onboard` when phase diagnosis or missing setup needs it. Do **not** regenerate valid SOW/SPEC/plans for every small task.
+Use `onboard` when phase diagnosis or missing setup needs it. Use `ledger auto` (dry-run) / `auto --yes` to apply the next formalize steps from the current phase — **never** rewrites `docs/product/sources/`. Do **not** regenerate valid SOW/SPEC/plans for every small task.
 
 ### Gate contracts (accurate enforcement claims)
 
