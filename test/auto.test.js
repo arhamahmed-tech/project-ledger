@@ -72,3 +72,15 @@ test("style tooling advisory appears in doctor", () => {
   assert.equal(doc.status, 0, doc.stderr || doc.stdout);
   assert.match(doc.stdout, /host style tooling/i);
 });
+
+test("auto dry-run escapes backslash and quotes in titles", async () => {
+  const { formatAutoPlan } = await import("../src/lib/auto.mjs");
+  const plan = {
+    phase: "sources_only",
+    headline: "test",
+    actions: [{ op: "new", args: ["sow", 'path\\with"quote'], note: "n" }],
+    blockers: [],
+  };
+  const out = formatAutoPlan(plan);
+  assert.match(out, /"path\\\\with\\"quote"/);
+});

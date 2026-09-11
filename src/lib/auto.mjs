@@ -169,8 +169,9 @@ export function formatAutoPlan(plan) {
   return lines.join("\n");
 }
 
+/** Quote for display in dry-run plans (not used as a shell argv). Escape \ before ". */
 function shellQuote(s) {
   const t = String(s);
-  if (/[\s"]/.test(t)) return `"${t.replace(/"/g, '\\"')}"`;
-  return t;
+  if (!/[\s"\\]/.test(t)) return t;
+  return `"${t.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
