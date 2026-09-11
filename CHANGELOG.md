@@ -2,6 +2,20 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.13.0 — 2026-09-11
+
+### Postflight (after coding)
+- `ledger postflight [TASK]` — current tree vs task: readiness still true, no `POSTFLIGHT_DRIFT`, fresh passing evidence
+- `done` and `review` use the same shared evaluator (`src/lib/gates.mjs`)
+- Preflight remains readiness-only; postflight/done prove the **current** tree against the task contract
+
+### Strict safeguards by default
+- Stop hooks hard-fail by default (`LEDGER_STRICT` defaults to on; set `LEDGER_STRICT=0` to soften)
+- Stop hooks run `validate` **and** `check`
+- `doctor` **FAIL**s in git repos without ledger pre-commit hook; CI workflow already required
+- `init` installs pre-commit when `.git` exists unless `--no-hooks`
+- CI workflow runs `check` on push and PR (not validate-only on push)
+
 ## 0.12.0 — 2026-09-10
 
 ### Workflow reliability (no redesign)

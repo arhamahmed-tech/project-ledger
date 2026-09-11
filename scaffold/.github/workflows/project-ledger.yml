@@ -25,8 +25,25 @@ jobs:
             echo "::error::No ledger CLI — run project-ledger init and commit scripts/ledger.mjs"
             exit 1
           fi
-      - name: Diff check TASK/CHG coverage (hard gate on PRs)
+      - name: Diff check TASK/CHG coverage (PR)
         if: github.event_name == 'pull_request'
         env:
           LEDGER_DIFF_RANGE: ${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}
-        run: node scripts/ledger.mjs check
+        run: |
+          if [ -f scripts/ledger.mjs ]; then
+            node scripts/ledger.mjs check
+          else
+            node node_modules/project-ledger/bin/project-ledger.js check
+          fi
+      - name: Diff check TASK/CHG coverage (push)
+        if: github.event_name == 'push'
+        run: |
+          # Compare against previous commit when available
+          if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            export LEDGER_DIFF_RANGE="${{ github.event.before }}...${{ github.sha }}"
+          fi
+          if [ -f scripts/ledger.mjs ]; then
+            node scripts/ledger.mjs check
+          else
+            node node_modules/project-ledger/bin/project-ledger.js check
+          fi

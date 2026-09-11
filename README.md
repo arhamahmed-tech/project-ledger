@@ -92,10 +92,10 @@ Not thirteen mandatory steps for every task:
 | Mode | Flow |
 |------|------|
 | Setup / product change | `sources` → formalize SOW/REQ/SPEC → ADR if needed → plans/tasks |
-| Normal task | `context` → focus/next → `preflight` → implement → verify (`evd`) → `done` → `review` |
-| Safeguards | hooks/CI → `validate` / `check` (local hooks bypassable; CI when configured) |
+| Normal task | `context` → focus/next → `preflight` → implement → verify (`evd`) → `postflight`/`done` → `review` |
+| Safeguards | hooks/CI → `validate` / `check` (strict by default; `LEDGER_STRICT=0` softens stop hooks) |
 
-`preflight` / `done` respect plan approval (`implementation_requires_approval`). A SPEC pin is not approval. Evidence must be `result=pass` with a fresh `code_state` of the task’s `files:`.
+`preflight` / `postflight` / `done` respect plan approval (`implementation_requires_approval`). A SPEC pin is not approval. Evidence must be `result=pass` with a fresh `code_state` of the task’s `files:`. `postflight` fails on implementation drift (changed code outside `task.files`).
 
 ---
 
@@ -110,9 +110,10 @@ Not thirteen mandatory steps for every task:
 | `project-ledger context` | Print active epic/plan/task paths for a new chat |
 | `project-ledger onboard` | Phase diagnosis when setup/focus is unclear |
 | `project-ledger preflight [TASK]` | Readiness before coding (SPEC, approval, deps, scope print) |
+| `project-ledger postflight [TASK]` | After coding: no drift + fresh evidence (same gates as done) |
 | `project-ledger next [--focus]` | Next ready task |
-| `project-ledger done <TASK-*>` | Complete if runs + fresh passing evidence (+ tests rule) |
-| `project-ledger review` | validate + check (+ preflight if focused) before PR |
+| `project-ledger done <TASK-*>` | Complete if postflight gates pass |
+| `project-ledger review` | validate + check (+ preflight/postflight if focused) before PR |
 | `project-ledger focus <id>` | Set active context (`EPIC`/`PLAN`/`TASK`/`SPEC`/`REQ`); `--clear` to reset |
 | `project-ledger new <kind> <title>` | Create epic/req/spec/sow/plan/task/adr/run/chg/evd/test/rel |
 | `project-ledger revise <SPEC-\|SOW-*>` | New immutable revision + `content_hash` |

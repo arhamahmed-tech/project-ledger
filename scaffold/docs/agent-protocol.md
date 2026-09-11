@@ -37,11 +37,11 @@ Git is the source of truth for intent and history.
 
 **Normal task execution** (when the board already has an approved plan + task):
 
-`context → focus/next → preflight → implement → verify (EVD) → done → review`
+`context → focus/next → preflight → implement → verify (EVD) → postflight → done → review`
 
-**Automatic safeguards** (not a substitute for the above):
+**Automatic safeguards**:
 
-`hooks / CI → validate + check` — local hooks can be bypassed; CI enforces merge only when configured.
+`hooks / CI → validate + check` — stop hooks **hard-fail by default** (`LEDGER_STRICT=0` to soften). `git commit --no-verify` can still bypass local hooks; enable required CI checks on the host.
 
 Use `onboard` when phase diagnosis or missing setup needs it. Do **not** regenerate valid SOW/SPEC/plans for every small task.
 
@@ -49,11 +49,12 @@ Use `onboard` when phase diagnosis or missing setup needs it. Do **not** regener
 
 | Command | What it proves | What it does **not** prove |
 |---------|----------------|----------------------------|
-| `preflight` | Task has plan, SPEC@rev, deps ready; plan approved when `implementation_requires_approval`; prints scope | Later code is correct or still in scope |
+| `preflight` | Task has plan, SPEC@rev, deps ready; plan approved when required; prints scope | Later code is correct or still in scope |
+| `postflight` | Current tree: readiness still true, no file drift vs `task.files`, fresh passing evidence | Product quality beyond recorded checks |
 | `validate` | Ledger structure + reference integrity (+ audit hash chain) | Software works |
 | `check` | Changed implementation paths are listed on TASK/CHG `files:` | Tests passed |
-| `done` | Required RUN + **passing fresh** evidence (+ tests rule); plan still approved | Re-ran your suite; only that records say so |
-| `review` | Composition of validate + check (+ preflight if focused) | Host CI green |
+| `done` | Same as postflight, then sets status=done | Re-ran your suite automatically |
+| `review` | validate + check (+ preflight + postflight if focused) | Host CI green |
 
 A **SPEC pin is not approval**. When `rules.implementation_requires_approval: true`, plan `status` must be `approved` / `in_progress` / `done` (not `draft`). Agent-generated docs do not imply human approval.
 

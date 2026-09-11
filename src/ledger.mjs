@@ -40,6 +40,7 @@ import {
   planIsApprovedForImpl,
   evaluateDoneEvidence,
   evaluateDoneTests,
+  evaluatePostflight,
   printGateErrors,
   redactSecrets,
   normalizeResult,
@@ -48,16 +49,16 @@ import {
 function usage() {
   console.log(`Project Ledger
 
-  project-ledger init [--name my-app] [--force]
+  project-ledger init [--name my-app] [--force] [--no-hooks]
   project-ledger adopt [--name my-app]   mid-build / existing repo onboarding
   project-ledger upgrade
   project-ledger inventory               code paths not covered by TASK files
   project-ledger doctor | status | onboard | validate | check | sources | board
-  project-ledger context | preflight [TASK] | next [--focus] | handoff
+  project-ledger context | preflight [TASK] | postflight [TASK] | next [--focus] | handoff
   project-ledger focus <id> | focus --clear
   project-ledger note <text>          append note to focused task
-  project-ledger done <TASK-id>       mark done if quality rules pass
-  project-ledger review               validate+check+preflight gate before PR
+  project-ledger done <TASK-id>       mark done if postflight gates pass
+  project-ledger review               validate+check+preflight+postflight before PR
   project-ledger new <epic|ms|req|spec|sow|plan|task|adr|run|chg|evd|test|rel> <title>
       flags: --epic --plan --spec --req --ms|--milestone --release --status --focus
              --run --result --task --command   (evd)
@@ -66,13 +67,14 @@ function usage() {
 
 Lifecycle (not 13 manual steps every time):
   Setup / product change:  sources → formalize → ADR if needed → plans/tasks
-  Normal task:             context → focus/next → preflight → implement → verify → done → review
-  Safeguards:              hooks/CI → validate/check (bypassable locally; CI when configured)
+  Normal task:             context → focus/next → preflight → implement → verify → postflight/done → review
+  Safeguards:              hooks/CI → validate/check (strict by default; LEDGER_STRICT=0 to soften stop hooks)
 
 Existing/mid-build repo:
   node /path/to/project-ledger/bin/project-ledger.js adopt --name my-app
 New chat:  node scripts/ledger.mjs context   # onboard only if phase/setup unclear
 Before code: node scripts/ledger.mjs preflight
+After code:  node scripts/ledger.mjs postflight
 `);
 }
 
@@ -305,8 +307,26 @@ function cmdDoctor() {
   ok("scripts/ledger.mjs", exists("scripts/ledger.mjs"), "Re-run init to vendor local CLI");
   ok("scripts/.project-ledger/", exists("scripts/.project-ledger/ledger.mjs"), "Re-run init/upgrade to vendor modules");
   ok("gates module", exists("scripts/.project-ledger/lib/gates.mjs") || exists("src/lib/gates.mjs"), "Re-run upgrade to vendor gates.mjs");
-  ok("CI workflow", exists(".github/workflows/project-ledger.yml"), "Run: project-ledger upgrade");
+  ok("CI workflow", exists(".github/workflows/project-ledger.yml"), "Run: project-ledger upgrade — required for merge gates");
   ok(".project/harness/validate-on-stop.sh", exists(".project/harness/validate-on-stop.sh"));
+
+  const gitOk = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: ROOT, encoding: "utf8" });
+  if (gitOk.status === 0) {
+    const gitDir = spawnSync("git", ["rev-parse", "--git-dir"], { cwd: ROOT, encoding: "utf8" });
+    const hookPath = path.join(ROOT, String(gitDir.stdout || "").trim(), "hooks", "pre-commit");
+    let hookOk = false;
+    if (fs.existsSync(hookPath)) {
+      const ht = fs.readFileSync(hookPath, "utf8");
+      hookOk = /ledger|project-ledger/.test(ht);
+    }
+    ok(
+      "git pre-commit ledger hook",
+      hookOk,
+      "Run: node scripts/ledger.mjs hooks install  (or init without --no-hooks)",
+    );
+  } else {
+    ok("git pre-commit ledger hook", true, "(skipped — not a git repo)");
+  }
   ok("Cursor rule", exists(".cursor/rules/project-ledger.mdc"));
   ok("find-skills (Cursor)", exists(".cursor/skills/find-skills/SKILL.md"), "Run: project-ledger init --force");
   ok("find-skills (Claude)", exists(".claude/skills/find-skills/SKILL.md"), "Run: project-ledger init --force");
@@ -374,6 +394,7 @@ function cmdDoctor() {
 
 function cmdInit(args) {
   const force = args.includes("--force");
+  const noHooks = args.includes("--no-hooks");
   const nameIdx = args.indexOf("--name");
   const name =
     (nameIdx >= 0 && args[nameIdx + 1]) ||
@@ -470,10 +491,10 @@ function cmdInit(args) {
   console.log(`  files written/kept: ${n}+ (skipped existing)`);
   console.log(`  local CLI: ${vendored ? "scripts/ledger.mjs (+ .project-ledger/)" : "NOT VENDORED"}`);
   console.log("");
-  console.log("Production gates (recommended):");
-  console.log("  node scripts/ledger.mjs hooks install   # pre-commit validate+check");
-  console.log("  # CI workflow: .github/workflows/project-ledger.yml (already scaffolded)");
-  console.log("  # Optional: LEDGER_STRICT=1 for stop-hook hard fail");
+  console.log("Production gates (default):");
+  console.log("  pre-commit: validate + check (installed when .git present unless --no-hooks)");
+  console.log("  CI: .github/workflows/project-ledger.yml (doctor fails if missing)");
+  console.log("  stop hooks: hard-fail by default (LEDGER_STRICT=0 to soften)");
   console.log("");
   console.log("Cursor: open Settings → Rules and confirm project-ledger is Always Apply.");
   console.log("        Enable Hooks if you want stop/validate reminders.");
@@ -485,13 +506,18 @@ function cmdInit(args) {
   console.log("  node scripts/ledger.mjs validate");
   console.log("  Edit .project/people.yaml and docs/product/vision.md");
 
-  // auto-install git hook when repo exists
+  // auto-install git hook when repo exists (unless --no-hooks)
   const gitOk = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: ROOT, encoding: "utf8" });
   if (gitOk.status === 0) {
-    try {
-      cmdHooksInstall();
-    } catch {
-      console.log("(skipped auto hooks install)");
+    if (noHooks) {
+      console.log("(skipped hooks install — --no-hooks)");
+    } else {
+      try {
+        cmdHooksInstall();
+      } catch (e) {
+        console.error(`hooks install failed: ${e.message || e}`);
+        console.error("  fix: node scripts/ledger.mjs hooks install");
+      }
     }
   }
 }
@@ -2011,11 +2037,11 @@ function cmdUpgrade() {
   console.log(`  local CLI: ${vendored ? "scripts/ledger.mjs refreshed" : "NOT VENDORED"}`);
   console.log("  ledger_version → 0.5");
   console.log("");
-  console.log("Migration notes (0.11 → 0.12):");
-  console.log("  - Shared gates: scripts/.project-ledger/lib/gates.mjs must be committed");
-  console.log("  - Plan draft blocks preflight/done when implementation_requires_approval (default)");
-  console.log("  - Evidence needs result=pass + code_state; re-record legacy EVD without code_state");
-  console.log("  - Prefer: ledger new evd \"…\" --run RUN-#### --result pass --task TASK-####");
+  console.log("Migration notes (0.12 → 0.13):");
+  console.log("  - postflight gate: after coding, before/at done (drift + fresh evidence)");
+  console.log("  - stop hooks hard-fail by default (LEDGER_STRICT=0 to soften)");
+  console.log("  - doctor fails without CI workflow or ledger pre-commit (in git repos)");
+  console.log("  - init installs hooks unless --no-hooks");
   console.log("Next: node scripts/ledger.mjs doctor && node scripts/ledger.mjs validate");
 }
 
@@ -2462,53 +2488,12 @@ function cmdDone(taskId) {
     console.error(`  fix: node scripts/ledger.mjs board   # list tasks`);
     process.exit(1);
   }
-  const errors = [];
-  const warns = [];
-  if (task.meta.status === "cancelled") {
-    errors.push({
-      code: "TASK_CANCELLED",
-      msg: "task is cancelled",
-      fix: "pick another task (ledger next) — do not mark cancelled work done",
-    });
-  }
-  const blockers = taskDepsReady(g, task);
-  if (blockers.length) {
-    errors.push({
-      code: "DEPS_NOT_READY",
-      msg: `depends_on not ready: ${blockers.join("; ")}`,
-      fix: "finish blocker tasks or adjust depends_on, then re-run done",
-    });
-  }
-
-  const plan = g.plans.find((p) => p.meta.id === task.meta.plan);
-  const appr = planIsApprovedForImpl(plan, rules);
-  if (task.meta.plan && !appr.ok) {
-    errors.push({
-      code: "PLAN_NOT_APPROVED",
-      msg: `${task.meta.plan} status=${appr.status} — cannot complete work against an unapproved plan`,
-      fix: appr.fix,
-    });
-  }
-
-  if (rules.agent_runs_required && !asArr(task.meta.agent_runs).length) {
-    errors.push({
-      code: "RUN_MISSING",
-      msg: "rules.agent_runs_required: no agent_runs on task",
-      fix: `ledger new run "…" --plan ${task.meta.plan || "PLAN-####"}  then add id to task.agent_runs`,
-    });
-  }
-
-  const ev = evaluateDoneEvidence(g, task, rules);
-  errors.push(...ev.errors);
-  warns.push(...(ev.warns || []));
-
-  const te = evaluateDoneTests(g, task, rules);
-  errors.push(...te.errors);
-
-  for (const w of warns) console.log(`WARN  ${w}`);
-  if (errors.length) {
-    printGateErrors("DONE FAIL", errors);
+  const result = evaluatePostflight(g, task, rules, { depsBlockers: taskDepsReady(g, task) });
+  for (const w of result.warns || []) console.log(`WARN  ${w}`);
+  if (!result.ok) {
+    printGateErrors("DONE FAIL", result.errors);
     console.error("\nCompletion records were not modified.");
+    console.error("Recovery: fix above, or: node scripts/ledger.mjs postflight " + taskId);
     process.exit(1);
   }
 
@@ -2522,32 +2507,55 @@ function cmdDone(taskId) {
   });
   appendAgentTrace({ action: "done", target: taskId });
   console.log(`${taskId} → done`);
-  if (ev.codeState?.hash) console.log(`verified against code_state ${ev.codeState.hash} (task.files)`);
+  if (result.codeState?.hash) console.log(`verified against code_state ${result.codeState.hash} (task.files)`);
   console.log("Next: node scripts/ledger.mjs review   # before PR");
-  console.log("Note: done checks ledger verification records — it does not re-run your test suite.");
+  console.log("Note: done = postflight gates (tree + fresh evidence); it does not re-run your suite unless EVD says so.");
+}
+
+function cmdPostflight(taskIdArg) {
+  const g = graph();
+  const ctx = g.context;
+  const taskId = taskIdArg || ctx.current_task;
+  console.log("POSTFLIGHT — after coding (current tree vs task)\n");
+  if (!taskId) {
+    console.error("FAIL  no task — run: ledger focus TASK-####   or: ledger postflight TASK-####");
+    process.exit(1);
+  }
+  const task = g.tasks.find((t) => t.meta.id === taskId);
+  if (!task) {
+    console.error(`FAIL  unknown ${taskId}`);
+    process.exit(1);
+  }
+  const rules = g.rules || {};
+  const result = evaluatePostflight(g, task, rules, { depsBlockers: taskDepsReady(g, task) });
+  console.log("CHECKS");
+  for (const c of result.checks || []) console.log(`  · ${c}`);
+  console.log("");
+  for (const w of result.warns || []) console.log(`WARN  ${w}`);
+  if (!result.ok) {
+    printGateErrors("POSTFLIGHT FAIL", result.errors);
+    console.error("\nDo not mark done yet. Fix drift/evidence, then re-run postflight.");
+    console.error("Preflight proved readiness to start; postflight proves the current tree still matches the task.");
+    process.exit(1);
+  }
+  console.log("\nPOSTFLIGHT OK — current tree matches task files + fresh verification.");
+  console.log("Limits: does not prove product quality beyond recorded checks; optional: re-run EVD command yourself.");
+  console.log("Next: node scripts/ledger.mjs done " + taskId);
 }
 
 function cmdReview() {
   console.log("REVIEW GATE (before PR)\n");
   let failed = 0;
-  const runStep = (label, fn) => {
-    console.log(`— ${label}`);
-    try {
-      fn();
-      console.log(`OK  ${label}\n`);
-    } catch (e) {
-      failed++;
-      console.error(`FAIL  ${label}: ${e.message || e}\n`);
-    }
-  };
 
-  // Run as subprocesses for real exit codes
   const steps = [
     ["validate", ["validate"]],
     ["check", ["check"]],
   ];
   const ctx = loadContext();
-  if (ctx.current_task) steps.push([`preflight ${ctx.current_task}`, ["preflight", ctx.current_task]]);
+  if (ctx.current_task) {
+    steps.push([`preflight ${ctx.current_task}`, ["preflight", ctx.current_task]]);
+    steps.push([`postflight ${ctx.current_task}`, ["postflight", ctx.current_task]]);
+  }
 
   for (const [label, args] of steps) {
     const entry = exists("scripts/ledger.mjs")
@@ -2575,10 +2583,11 @@ function cmdReview() {
   if (failed) {
     console.error(`\nREVIEW FAIL (${failed}) — do not open/merge PR yet`);
     console.error("Recovery: fix the failing gate above, then: node scripts/ledger.mjs review");
-    console.error("Local hooks can be bypassed; CI enforces merge only when configured.");
+    console.error("Stop hooks hard-fail by default; CI enforces merge when the workflow is present (doctor requires it).");
+    console.error("git commit --no-verify can still bypass local hooks — rely on required CI status checks.");
     process.exit(1);
   }
-  console.log("\nREVIEW OK — validate + check (+ preflight if focused) passed.");
+  console.log("\nREVIEW OK — validate + check (+ preflight/postflight if focused) passed.");
   console.log("Still follow host CI. Valid ledger records alone do not prove working software.");
 }
 
@@ -3079,6 +3088,9 @@ switch (cmd) {
     break;
   case "preflight":
     cmdPreflight(argv[0]);
+    break;
+  case "postflight":
+    cmdPostflight(argv[0]);
     break;
   case "next":
     cmdNext(argv);

@@ -6,6 +6,7 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import { abs, exists } from "./paths.mjs";
 import { asArr, yamlScalar } from "./parse.mjs";
+import { fileMatches } from "./model.mjs";
 
 export const PASS_RESULTS = new Set(["pass", "passed", "ok"]);
 export const FAIL_RESULTS = new Set(["fail", "failed", "error"]);
@@ -252,4 +253,195 @@ export function redactSecrets(text, max = 4000) {
   s = s.replace(/Bearer\s+[A-Za-z0-9._\-]+/gi, "Bearer [REDACTED]");
   if (s.length > max) s = s.slice(0, max) + "\n…[truncated]";
   return s;
+}
+
+
+export const CODE_SKIP_PREFIXES = [
+  ".project/",
+  ".audit/",
+  ".agent-trace/",
+  ".engineering/",
+  "docs/",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "scripts/ledger.mjs",
+  "scripts/.project-ledger/",
+  ".cursor/",
+  ".claude/",
+  ".github/",
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "README.md",
+  "LICENSE",
+  "CHANGELOG.md",
+];
+
+export function isCodePath(f) {
+  return !CODE_SKIP_PREFIXES.some((p) => f === p || f.startsWith(p));
+}
+
+/** Changed implementation paths (working tree + index + untracked, or LEDGER_DIFF_RANGE). */
+export function listChangedCodeFiles() {
+  const opts = { cwd: abs("."), encoding: "utf8" };
+  const inside = spawnSync("git", ["rev-parse", "--is-inside-work-tree"], opts);
+  if (inside.status !== 0) return { ok: false, files: [], reason: "not-git" };
+  let files = [];
+  const range = process.env.LEDGER_DIFF_RANGE;
+  if (range) {
+    const d = spawnSync("git", ["diff", "--name-only", range], opts);
+    files = String(d.stdout || "")
+      .split("\n")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  } else {
+    const a = spawnSync("git", ["diff", "--name-only", "HEAD"], opts);
+    const b = spawnSync("git", ["diff", "--cached", "--name-only"], opts);
+    const c = spawnSync("git", ["ls-files", "--others", "--exclude-standard"], opts);
+    files = [
+      ...new Set(
+        [a.stdout, b.stdout, c.stdout].flatMap((s) =>
+          String(s || "")
+            .split("\n")
+            .map((x) => x.trim())
+            .filter(Boolean),
+        ),
+      ),
+    ].sort();
+  }
+  return { ok: true, files: files.filter(isCodePath) };
+}
+
+export function fileCoveredByTaskOrChange(g, task, file) {
+  if (fileMatches(task.meta.files, file) || (task.body && task.body.includes(file))) return true;
+  const runIds = asArr(task.meta.agent_runs);
+  for (const c of g.changes || []) {
+    const run = c.meta.agent_run;
+    if (run && runIds.includes(run) && (fileMatches(c.meta.files, file) || (c.body || "").includes(file))) {
+      return true;
+    }
+    if (fileMatches(c.meta.files, file) || (c.body || "").includes(file)) {
+      // allow CHG that mentions the task id
+      if (String(c.meta.task || "") === task.meta.id || asArr(c.meta.tasks).includes(task.meta.id)) return true;
+      if ((c.body || "").includes(task.meta.id)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Post-implementation gate: readiness still true + no file drift + fresh evidence.
+ * Preflight does not prove later code; this does for the current tree.
+ */
+export function evaluatePostflight(g, task, rules = {}, { depsBlockers = [] } = {}) {
+  const errors = [];
+  const warns = [];
+  const checks = [];
+
+  if (!task) {
+    return {
+      ok: false,
+      errors: [{ code: "NO_TASK", msg: "no task", fix: "ledger focus TASK-#### or postflight TASK-####" }],
+      warns,
+      checks,
+    };
+  }
+  checks.push(`task ${task.meta.id} [${task.meta.status || "?"}]`);
+
+  if (task.meta.status === "cancelled") {
+    errors.push({
+      code: "TASK_CANCELLED",
+      msg: "task is cancelled",
+      fix: "pick another task — do not complete cancelled work",
+    });
+  }
+  if (depsBlockers.length) {
+    errors.push({
+      code: "DEPS_NOT_READY",
+      msg: `depends_on not ready: ${depsBlockers.join("; ")}`,
+      fix: "finish blockers or adjust depends_on",
+    });
+  }
+
+  const plan = g.plans.find((p) => p.meta.id === task.meta.plan);
+  if (!task.meta.plan) {
+    errors.push({
+      code: "NO_PLAN",
+      msg: "task has no plan",
+      fix: "link a PLAN on the task before done",
+    });
+  } else if (!plan) {
+    errors.push({
+      code: "PLAN_MISSING",
+      msg: `${task.meta.plan} not found`,
+      fix: "restore plan file or fix task.plan",
+    });
+  } else {
+    const appr = planIsApprovedForImpl(plan, rules);
+    if (!appr.ok) {
+      errors.push({
+        code: "PLAN_NOT_APPROVED",
+        msg: `${plan.meta.id} status=${appr.status}`,
+        fix: appr.fix,
+      });
+    } else {
+      checks.push(`plan ${plan.meta.id} [${plan.meta.status}]`);
+    }
+    const specRef = plan.meta.spec;
+    if (rules.implementation_requires_spec !== false) {
+      if (!specRef || !String(specRef).includes("@")) {
+        errors.push({
+          code: "NO_SPEC_PIN",
+          msg: "plan has no SPEC@rev pin",
+          fix: "set plan.spec to SPEC-####@N",
+        });
+      } else {
+        checks.push(`spec ${specRef}`);
+      }
+    }
+  }
+
+  if (rules.agent_runs_required && !asArr(task.meta.agent_runs).length) {
+    errors.push({
+      code: "RUN_MISSING",
+      msg: "rules.agent_runs_required: no agent_runs on task",
+      fix: `ledger new run "…" --plan ${task.meta.plan || "PLAN-####"} then link on task`,
+    });
+  }
+
+  const changed = listChangedCodeFiles();
+  if (!changed.ok) {
+    warns.push("not a git repo — skipping implementation-drift check");
+  } else if (!changed.files.length) {
+    checks.push("no dirty implementation files (drift check clean)");
+  } else {
+    checks.push(`changed code files: ${changed.files.length}`);
+    for (const f of changed.files) {
+      if (!fileCoveredByTaskOrChange(g, task, f)) {
+        errors.push({
+          code: "POSTFLIGHT_DRIFT",
+          msg: `${f} changed but not listed on ${task.meta.id} files: (or linked CHG)`,
+          fix: `add path to task files: [] or revert the file, then re-record evidence`,
+        });
+      }
+    }
+  }
+
+  const ev = evaluateDoneEvidence(g, task, rules);
+  errors.push(...ev.errors);
+  warns.push(...(ev.warns || []));
+  if (ev.codeState?.hash) checks.push(`code_state ${ev.codeState.hash}`);
+
+  const te = evaluateDoneTests(g, task, rules);
+  errors.push(...te.errors);
+
+  return {
+    ok: !errors.length,
+    errors,
+    warns,
+    checks,
+    codeState: ev.codeState,
+    changedFiles: changed.files || [],
+  };
 }

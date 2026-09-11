@@ -178,3 +178,73 @@ test("blocked evidence does not count as pass", () => {
   assert.notEqual(done.status, 0);
   assert.match(done.stderr, /EVIDENCE_BLOCKED/);
 });
+
+test("postflight fails on drift; passes when files covered", () => {
+  const { dir, runLocal } = setupTaskRepo();
+  spawnSync("git", ["init"], { cwd: dir, encoding: "utf8" });
+  spawnSync("git", ["config", "user.email", "t@example.com"], { cwd: dir, encoding: "utf8" });
+  spawnSync("git", ["config", "user.name", "t"], { cwd: dir, encoding: "utf8" });
+  spawnSync("git", ["add", "-A"], { cwd: dir, encoding: "utf8" });
+  spawnSync("git", ["commit", "-m", "init"], { cwd: dir, encoding: "utf8" });
+
+  assert.equal(runLocal(["new", "run", "work", "--plan", "PLAN-0001"]).status, 0);
+  assert.equal(runLocal(["new", "test", "T", "--task", "TASK-0001"]).status, 0);
+  // change listed file + record evidence
+  fs.writeFileSync(path.join(dir, "src/fix.js"), "export const x = 3;\n");
+  assert.equal(
+    runLocal(["new", "evd", "ok", "--run", "RUN-0001", "--result", "pass", "--task", "TASK-0001"]).status,
+    0,
+  );
+  let pf = runLocal(["postflight", "TASK-0001"]);
+  assert.equal(pf.status, 0, pf.stderr || pf.stdout);
+  assert.match(pf.stdout, /POSTFLIGHT OK/);
+
+  // drift: edit unlisted file
+  fs.writeFileSync(path.join(dir, "src/other.js"), "export const y = 1;\n");
+  pf = runLocal(["postflight", "TASK-0001"]);
+  assert.notEqual(pf.status, 0);
+  assert.match(pf.stderr, /POSTFLIGHT_DRIFT/);
+  assert.match(pf.stderr, /fix:/);
+
+  const done = runLocal(["done", "TASK-0001"]);
+  assert.notEqual(done.status, 0);
+  assert.match(done.stderr, /POSTFLIGHT_DRIFT/);
+});
+
+test("doctor fails without pre-commit in git repo; hooks install fixes", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-doc-"));
+  assert.equal(run(["init", "--name", "dochook", "--no-hooks"], dir).status, 0);
+  spawnSync("git", ["init"], { cwd: dir, encoding: "utf8" });
+  const bin = path.join(dir, "scripts/ledger.mjs");
+  let doc = spawnSync(process.execPath, [bin, "doctor"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, LEDGER_PKG_ROOT: PKG },
+  });
+  assert.notEqual(doc.status, 0);
+  assert.match(doc.stdout + doc.stderr, /pre-commit/);
+
+  assert.equal(spawnSync(process.execPath, [bin, "hooks", "install"], { cwd: dir, encoding: "utf8" }).status, 0);
+  doc = spawnSync(process.execPath, [bin, "doctor"], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, LEDGER_PKG_ROOT: PKG },
+  });
+  assert.equal(doc.status, 0, doc.stderr || doc.stdout);
+});
+
+test("stop hook hard-fails by default; LEDGER_STRICT=0 softens", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ledger-strict-"));
+  assert.equal(run(["init", "--name", "strict"], dir).status, 0);
+  // break validate
+  fs.unlinkSync(path.join(dir, "AGENTS.md"));
+  const hook = path.join(dir, ".project/harness/validate-on-stop.sh");
+  let out = spawnSync("bash", [hook], { cwd: dir, encoding: "utf8" });
+  assert.notEqual(out.status, 0);
+  out = spawnSync("bash", [hook], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, LEDGER_STRICT: "0" },
+  });
+  assert.equal(out.status, 0, out.stderr || out.stdout);
+});
