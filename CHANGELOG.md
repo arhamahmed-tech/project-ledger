@@ -2,6 +2,32 @@
 
 All notable changes to **project-ledger** are documented here.
 
+## 0.13.0 — 2026-09-11
+
+### Postflight (after coding)
+- `ledger postflight [TASK]` — current tree vs task: readiness still true, no `POSTFLIGHT_DRIFT`, fresh passing evidence
+- `done` and `review` use the same shared evaluator (`src/lib/gates.mjs`)
+- Preflight remains readiness-only; postflight/done prove the **current** tree against the task contract
+
+### Strict safeguards by default
+- Stop hooks hard-fail by default (`LEDGER_STRICT` defaults to on; set `LEDGER_STRICT=0` to soften)
+- Stop hooks run `validate` **and** `check`
+- `doctor` **FAIL**s in git repos without ledger pre-commit hook; CI workflow already required
+- `init` installs pre-commit when `.git` exists unless `--no-hooks`
+- CI workflow runs `check` on push and PR (not validate-only on push)
+
+## 0.12.0 — 2026-09-10
+
+### Workflow reliability (no redesign)
+- Clarify lifecycle in CLI/docs: setup vs normal task vs hooks/CI — not 13 steps every time
+- Enforce existing `implementation_requires_approval`: plan must be `approved`/`in_progress`/`done` (SPEC pin ≠ approval); proposed ADRs on a plan block preflight when approval is required
+- `done` requires **passing, fresh** evidence (`result=pass` + matching `code_state` of task `files:`); `fail`/`not_run`/`blocked` never count as pass; legacy EVD without `code_state` is insufficient
+- `ledger new evd` records `code_state` / `result` / `command` / `task`, links RUN + task `agent_runs`; evidence file itself does not invalidate code_state
+- Gate failures print actionable `fix:` recovery lines; docs state honest limits of preflight/validate/check/hooks/CI
+- Scope-change process documented: revise (new revision), preserve history, follow-up tasks for new pins
+- Empty `task.files` blocks `done` when evidence is required (`TASK_FILES_EMPTY`); preflight warns
+- Claude / Copilot harness docs aligned with lifecycle + evidence rules
+
 ## 0.11.0 — 2026-09-09
 
 ### Fully autonomous agent startup

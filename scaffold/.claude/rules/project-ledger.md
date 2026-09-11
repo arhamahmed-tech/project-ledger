@@ -2,7 +2,9 @@
 
 You are in a Project Ledger repository. Canonical rules: `docs/agent-protocol.md` and `AGENTS.md`.
 
-**New chat:** automatically run `node scripts/ledger.mjs context` first; read-only paths. If empty, automatically run `node scripts/ledger.mjs onboard` for phase + next steps.
-Set focus with `ledger focus TASK-####`. Create work with `ledger new …`.
-Before non-trivial implementation: epic → requirement → current SPEC revision → ADRs → plan → task → agent run → evidence.
-Never rewrite immutable history. Run `node scripts/ledger.mjs validate` before claiming ledger completion.
+**Lifecycle:** setup (sources → formalize → plans) vs normal task (`context` → preflight → implement → evd → postflight → done → review).
+
+**New chat:** run `node scripts/ledger.mjs context` first; if empty/setup unclear, run `onboard`.
+**Before coding:** `preflight` — SPEC pin ≠ plan approval; out of scope → ask.
+**After coding:** `postflight` (no drift + fresh evidence) then `done` then `review`.
+Never rewrite immutable history. Run `validate` before claiming ledger completion (records ≠ working software).

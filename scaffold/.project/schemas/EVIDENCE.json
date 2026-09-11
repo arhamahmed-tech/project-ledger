@@ -6,10 +6,21 @@
   "required": ["id", "kind", "agent_run", "path"],
   "properties": {
     "id": { "type": "string", "pattern": "^EVD-[0-9]+$" },
-    "kind": { "type": "string", "enum": ["test", "review", "deploy", "manual", "other"] },
-    "agent_run": { "type": "string", "pattern": "^RUN-[0-9]+$" },
+    "kind": { "type": "string", "enum": ["test", "review", "deploy", "manual", "other", "note"] },
+    "agent_run": { "type": ["string", "null"], "pattern": "^RUN-[0-9]+$" },
+    "task": { "type": ["string", "null"], "pattern": "^TASK-[0-9]+$" },
+    "command": { "type": "string" },
     "path": { "type": "string" },
-    "result": { "type": "string", "enum": ["pass", "fail", "n/a"] },
+    "result": {
+      "type": "string",
+      "enum": ["pass", "fail", "not_run", "blocked", "waived", "n/a"],
+      "description": "not_run/blocked/fail never count as pass for done; n/a treated as not_run"
+    },
+    "code_state": {
+      "type": "string",
+      "description": "Hash of task.files working tree at verification time"
+    },
+    "git_head": { "type": ["string", "null"] },
     "recorded_at": { "type": "string", "format": "date-time" }
   },
   "additionalProperties": true

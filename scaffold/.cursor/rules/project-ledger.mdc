@@ -7,14 +7,15 @@ alwaysApply: true
 
 **This rule must apply every chat.** If you do not see it in Cursor Settings → Rules as “Always Apply”, reload the window.
 
-1. **New chat:** automatically run `node scripts/ledger.mjs context` first — read-only paths. If empty, automatically run `node scripts/ledger.mjs onboard` for phase + next steps.
-2. **Before coding:** automatically run `node scripts/ledger.mjs preflight` — must pass (SPEC, deps, **code style**). Out of scope / missing deps → ask user.
-3. **Handoff / next:** `ledger handoff` for new chats; `ledger next --focus` for the next ready task.
-4. **Finish:** `ledger done TASK-####` then `ledger review` before PR.
-5. **User originals:** `docs/product/sources/` — never rewrite; `ledger sources`
-6. Canonical protocol: `AGENTS.md` + `docs/agent-protocol.md`
-7. Toolkit: **skill → find-skills → MCP → hooks → implement**
-8. Before claiming done: `node scripts/ledger.mjs validate`
+1. **New chat:** automatically run `node scripts/ledger.mjs context` first — read-only paths. If empty / setup unclear, run `onboard` (not on every small task).
+2. **Before coding:** automatically run `node scripts/ledger.mjs preflight` — must pass (SPEC, plan approval, deps, **code style**). Out of scope / missing deps → ask user.
+3. **After coding:** `postflight` then `done` (no drift + fresh evidence).
+4. **Handoff / next:** `ledger handoff` for new chats; `ledger next --focus` for the next ready task.
+5. **Finish:** `ledger done TASK-####` then `ledger review` before PR.
+6. **User originals:** `docs/product/sources/` — never rewrite; `ledger sources`
+7. Canonical protocol: `AGENTS.md` + `docs/agent-protocol.md`
+8. Toolkit: **skill → find-skills → MCP → hooks → implement**
+9. Before claiming done: `node scripts/ledger.mjs validate`
 
 Never rewrite immutable SOW/SPEC/ADR history. Never skip ledger for non-trivial product work.
 
